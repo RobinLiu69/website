@@ -109,8 +109,13 @@ export class BoardView {
     const frame = squareFrame(0.98, 0.84);
     this.disposables.push(fill, frame);
 
-    this.hoverMark = new THREE.Mesh(fill, overlay(PALETTE.accent, 0.5));
-    this.selectMark = new THREE.Mesh(frame, overlay(PALETTE.accentDeep, 0.95));
+    const hoverMaterial = overlay(PALETTE.accent, 0.5);
+    const selectMaterial = overlay(PALETTE.accentDeep, 0.95);
+    const checkMaterial = overlay(PALETTE.accentDeep, 0.9);
+    this.disposables.push(hoverMaterial, selectMaterial, checkMaterial);
+
+    this.hoverMark = new THREE.Mesh(fill, hoverMaterial);
+    this.selectMark = new THREE.Mesh(frame, selectMaterial);
     for (const mark of [this.hoverMark, this.selectMark]) {
       mark.position.y = 0.012;
       mark.visible = false;
@@ -118,7 +123,7 @@ export class BoardView {
       this.root.add(mark);
     }
     for (let i = 0; i < 2; i++) {
-      const mark = new THREE.Mesh(frame, overlay(PALETTE.accentDeep, 0.9));
+      const mark = new THREE.Mesh(frame, checkMaterial);
       mark.position.y = 0.014;
       mark.visible = false;
       mark.renderOrder = 2;
@@ -420,6 +425,6 @@ export class BoardView {
 
   dispose(): void {
     this.disposables.forEach((d) => d.dispose());
-    this.hoverMark.material instanceof THREE.Material && this.hoverMark.material.dispose();
+    this.disposables.length = 0;
   }
 }

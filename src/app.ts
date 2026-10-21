@@ -61,6 +61,7 @@ export class App {
   private idleTimer = 0;
   private idleFired = false;
   private unlockFlow = 0;
+  private laidOut = { w: 0, h: 0 };
 
   constructor(private readonly root: HTMLElement) {
     applyCssTheme();
@@ -113,7 +114,7 @@ export class App {
         isUnlocked: (id) => this.progress.isUnlocked(sectionById(id).piece),
         openSection: (id) => void this.openSection(id),
         sectionContext: () => this.sectionContext(),
-        move: (from, to) => this.game.move(from, to),
+        move: async (from, to) => !this.cinematic && (await this.game.move(from, to)),
         hasPiece: (square) => this.game.pieceAt(square) !== null,
         resetBoard: () => void this.resetBoard(),
         resetProgress: () => this.resetProgress(),
@@ -178,7 +179,7 @@ export class App {
   }
 
   async start(): Promise<void> {
-    this.layout();
+    this.layout(true);
     this.syncPlinths();
     this.refreshAll();
     this.stage.start();
@@ -198,8 +199,14 @@ export class App {
 
   /* ----------------------------- layout ----------------------------- */
 
-  private layout(): void {
+  /**
+   * Re-fits the camera and plinths. ResizeObserver also reports the size it starts with,
+   * and acting on that would cut the intro flight short, so an unchanged size is ignored.
+   */
+  private layout(force = false): void {
     const { w, h: height } = this.stage.size;
+    if (!force && w === this.laidOut.w && height === this.laidOut.h) return;
+    this.laidOut = { w, h: height };
     const aspect = w / height;
     const kind = layoutKindFor(aspect);
     if (kind !== this.plinths.layoutKind) this.plinths.layout(kind);
@@ -425,6 +432,7 @@ export class App {
       return;
     }
 
+    if (this.focus) this.panel.close();
     const hint = piece === 'q' ? t('plinth.hintSecret') : t('plinth.hint', { piece: t(`piece.${piece}`) });
     this.toasts.show(t('toast.locked', { hint }), 'warn', 2800);
     this.pokeLock();
