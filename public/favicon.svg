@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#F2EDE4"/>
+  <!-- low-poly pawn: faceted head, collar, stem, base -->
+  <polygon points="32,10 41,15 41,25 32,30 23,25 23,15" fill="#E2704A"/>
+  <polygon points="32,10 41,15 32,19 23,15" fill="#EE8E6C"/>
+  <polygon points="32,19 41,15 41,25 32,30" fill="#C85A37"/>
+  <polygon points="22,31 42,31 39,36 25,36" fill="#3A3532"/>
+  <polygon points="26,36 38,36 40,47 24,47" fill="#4A4440"/>
+  <polygon points="19,47 45,47 48,54 16,54" fill="#3A3532"/>
+</svg>
