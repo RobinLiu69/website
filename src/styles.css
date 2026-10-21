@@ -1220,6 +1220,37 @@ a.card:hover {
   }
 }
 
+/* Phones held sideways: there is almost no height, so keep the chrome small. */
+@media (max-height: 520px) {
+  .tagline,
+  .hint-keys {
+    display: none;
+  }
+
+  .hint {
+    padding: 8px 14px;
+    font-size: 12.5px;
+  }
+
+  .pl-text {
+    display: none;
+  }
+
+  .plinth-label {
+    padding-right: 8px;
+  }
+
+  .plinth-label.is-active .pl-text,
+  .plinth-label.is-hover .pl-text {
+    display: flex;
+  }
+
+  #app.panel-open .labels {
+    opacity: 0;
+    transition-delay: 0s;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

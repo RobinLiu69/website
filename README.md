@@ -66,7 +66,7 @@ npm run preview    # 預覽建置結果
 2. 把程式推到 `main`,`.github/workflows/deploy.yml` 會跑型別檢查、測試、建置,然後部署。
 3. 網址會是 `https://<帳號>.github.io/<repo 名稱>/`。
 
-這是 project site,資源路徑需要 `/<repo 名稱>/` 前綴,workflow 已經用 `BASE_PATH` 帶進去。如果你用自訂網域,或 repo 名稱是 `<帳號>.github.io`,請在 workflow 裡把 `BASE_PATH` 改成 `/`。
+這是 project site,資源路徑需要 `/<repo 名稱>/` 前綴,workflow 已經用 `BASE_PATH` 帶進去(分享預覽圖用的 `SITE_URL` 也是)。如果你用自訂網域,或 repo 名稱是 `<帳號>.github.io`,請在 workflow 裡把 `BASE_PATH` 改成 `/`,並把 `SITE_URL` 換成你的網址。
 
 分支與 PR 只會跑檢查、不會部署。
 
@@ -87,5 +87,5 @@ tests/       Vitest
 ## 注意
 
 - 解鎖是純前端的小遊戲,不是安全機制:區塊內容是公開的靜態檔案,只是不會在一開始就下載。
-- 沒有設定 Open Graph 分享圖。部署後可以放一張 `public/og.png`,並在 `index.html` 加上完整網址的 `og:image`。
+- 分享連結時的預覽圖是 `public/og.png`(1200×630),目前拍的是範例內容的畫面。改完自己的內容後,請重拍一張換掉。預覽圖需要完整網址,所以只有在建置時有設定 `SITE_URL`(workflow 會自動帶入)才會寫進 HTML。
 - 瀏覽器不支援 WebGL 時會顯示後備頁面,只有名稱與聯絡方式。

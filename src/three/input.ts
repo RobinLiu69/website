@@ -174,7 +174,7 @@ export class InputController {
       const view = picked.view;
       const held = this.selected;
       // With a piece already selected, clicking an enemy piece takes it.
-      if (held && held.id !== view.id && held.color !== view.color && e.pointerType !== 'touch') {
+      if (held && held.id !== view.id && held.color !== view.color) {
         const from = held.square;
         this.clearSelection();
         this.host.move(from, view.square);
