@@ -10,7 +10,7 @@ async function main(host: HTMLElement): Promise<void> {
   try {
     const app = new App(host);
     // A handle for tests and the browser console; only present in dev and QA builds.
-    if (import.meta.env.DEV || import.meta.env['VITE_QA'] === '1') Object.assign(window, { __app: app.debug });
+    if (import.meta.env.DEV || import.meta.env.VITE_QA === '1') Object.assign(window, { __app: app.debug });
     await app.start();
   } catch (error) {
     host.replaceChildren();

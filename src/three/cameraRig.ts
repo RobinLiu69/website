@@ -97,7 +97,7 @@ export class CameraRig {
   /** Overview limits scale with the fitted distance. */
   overviewLimits(): Limits {
     return {
-      yaw: [-0.75, 0.75],
+      yaw: [-0.95, 0.95],
       pitch: [0.3, 1.2],
       dist: [this.home.dist * 0.62, this.home.dist * 1.15],
     };

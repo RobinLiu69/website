@@ -215,7 +215,7 @@ export class InputController {
     if (g.kind === 'piece' && g.id === e.pointerId) {
       if (!g.dragging && Math.hypot(e.clientX - g.x, e.clientY - g.y) > DRAG_THRESHOLD) {
         g.dragging = true;
-        this.beginDrag();
+        this.beginDrag(g.view);
       }
       if (g.dragging) this.dragTo(e, g.view);
     } else if (g.kind === 'plinth' && g.id === e.pointerId) {
@@ -229,7 +229,7 @@ export class InputController {
       } else if (g.id === e.pointerId) {
         if (Math.hypot(e.clientX - g.x, e.clientY - g.y) > 4) g.moved = true;
         if (g.moved && g.orbits) {
-          this.stage.rig.orbitBy(-(e.clientX - g.lastX) * 0.0055, (e.clientY - g.lastY) * 0.0045);
+          this.stage.rig.orbitBy(-(e.clientX - g.lastX) * 0.0042, (e.clientY - g.lastY) * 0.0035);
           this.canvas.style.cursor = 'grabbing';
         }
         g.lastX = e.clientX;
@@ -319,7 +319,8 @@ export class InputController {
     if (!this.selected && this.cursor === null) this.board.hover(null);
   }
 
-  private beginDrag(): void {
+  private beginDrag(view: PieceView): void {
+    view.motion++; // a hop that is still settling must not fight the pointer
     this.canvas.style.cursor = 'grabbing';
     this.dragLift = 0;
     void this.stage.tweens.run(

@@ -76,6 +76,14 @@ button {
   inset: 0;
 }
 
+.stage-canvas,
+.labels,
+.hud-top,
+.hud-bottom {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .stage-canvas {
   display: block;
   width: 100%;

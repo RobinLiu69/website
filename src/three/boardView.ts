@@ -42,6 +42,8 @@ export interface PieceView {
   square: Square;
   object: THREE.Group;
   mesh: THREE.Mesh;
+  /** Bumped whenever something takes over the piece's position, which cancels any hop in flight. */
+  motion: number;
 }
 
 export interface MoveOptions {
@@ -165,6 +167,8 @@ export class BoardView {
       return mesh.geometry;
     });
 
+    this.buildCoordinates();
+
     // A tapered slab underneath, so the board reads as a floating tray.
     const baseGeo = new THREE.CylinderGeometry(6.5, 5.4, 0.55, 4, 1).rotateY(Math.PI / 4);
     const baseMat = new THREE.MeshStandardMaterial({ color: PALETTE.boardBase, roughness: 0.95, flatShading: true });
@@ -175,6 +179,34 @@ export class BoardView {
     this.root.add(base);
 
     this.disposables.push(squareGeo, lightMat, darkMat, rimMat, baseGeo, baseMat, ...rimGeos);
+  }
+
+  /** a-h along the front rim and 1-8 down the left one, as seen from white's side. */
+  private buildCoordinates(): void {
+    const geometry = new THREE.PlaneGeometry(0.34, 0.34).rotateX(-Math.PI / 2);
+    this.disposables.push(geometry);
+    const add = (text: string, x: number, z: number): void => {
+      const size = 64;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.fillStyle = '#f3e9d8';
+      ctx.font = '600 42px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, size / 2, size / 2 + 3);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = 4;
+      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, 0.085, z);
+      this.root.add(mesh);
+      this.disposables.push(texture, material);
+    };
+    for (let file = 0; file < 8; file++) add('abcdefgh'.charAt(file), file - 3.5, 4.2);
+    for (let rank = 0; rank < 8; rank++) add(String(rank + 1), -4.2, 3.5 - rank);
   }
 
   /* ----------------------------- queries ----------------------------- */
@@ -250,7 +282,7 @@ export class BoardView {
     squareCenter(square, 0, object.position);
     this.piecesRoot.add(object);
 
-    const view: PieceView = { id, type, color, square, object, mesh };
+    const view: PieceView = { id, type, color, square, object, mesh, motion: 0 };
     this.views.set(id, view);
     this.refreshPickables();
 
@@ -328,9 +360,11 @@ export class BoardView {
     const distance = Math.hypot(to.x - from.x, to.z - from.z);
     const duration = options.duration ?? this.travelTime(id, square);
     const hop = options.hop ?? Math.min(0.2 + 0.07 * distance, 0.9);
+    const token = ++view.motion;
     return this.tweens.run(
       duration,
       (t) => {
+        if (view.motion !== token) return;
         view.object.position.x = from.x + (to.x - from.x) * t;
         view.object.position.z = from.z + (to.z - from.z) * t;
         view.object.position.y = from.y * (1 - t) + hop * Math.sin(Math.PI * t);

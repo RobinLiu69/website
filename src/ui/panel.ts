@@ -142,7 +142,9 @@ export class SidePanel {
     this.next.replaceChildren(h('span', { text: t('panel.next') }), icon('next', 16));
     this.prev.disabled = prev === null;
     this.next.disabled = next === null;
-    const unlockedCount = SECTIONS.filter((s) => this.host.isUnlocked(s.id)).length;
-    this.progress.textContent = `${unlockedCount} / ${SECTIONS.length}`;
+    // Page number among the unlocked sections, matching what Previous / Next walk through.
+    const unlocked = SECTIONS.filter((s) => this.host.isUnlocked(s.id));
+    const position = unlocked.findIndex((s) => s.id === this.current) + 1;
+    this.progress.textContent = `${position} / ${unlocked.length}`;
   }
 }

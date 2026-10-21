@@ -595,6 +595,7 @@ export class App {
     );
 
     window.addEventListener('keydown', (e) => {
+      this.onActivity();
       if (isTyping(e.target)) return;
       if (e.key === 'Escape') {
         if (this.terminal.isOpen) this.terminal.close();

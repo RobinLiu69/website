@@ -26,7 +26,8 @@ export class TerminalView {
   private readonly title = h('span', { class: 'term-title' });
   private readonly history: string[] = [];
   private cursor = 0;
-  private busy = false;
+  /** Commands run one after another, so typing ahead while a move animates is safe. */
+  private queue: Promise<void> = Promise.resolve();
   private opener: Element | null = null;
 
   constructor(
@@ -39,7 +40,7 @@ export class TerminalView {
     const form = h('form', { class: 'term-line' }, this.prompt, this.input);
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      void this.submit();
+      this.submit();
     });
     this.input.addEventListener('keydown', (e) => this.onKey(e));
 
@@ -99,8 +100,7 @@ export class TerminalView {
     this.log.scrollTop = this.log.scrollHeight;
   }
 
-  private async submit(): Promise<void> {
-    if (this.busy) return;
+  private submit(): void {
     const line = this.input.value;
     this.input.value = '';
     this.print(`${t('terminal.prompt')} ${line}`, 'echo');
@@ -108,18 +108,17 @@ export class TerminalView {
     this.history.push(line);
     this.cursor = this.history.length;
 
-    this.busy = true;
-    try {
-      const result = await this.run(line);
-      if (result.action === 'clear') this.log.replaceChildren();
-      if (result.out) this.print(result.out);
-      if (result.action === 'exit') this.close();
-    } catch {
-      this.print(t('panel.error'));
-    } finally {
-      this.busy = false;
+    this.queue = this.queue.then(async () => {
+      try {
+        const result = await this.run(line);
+        if (result.action === 'clear') this.log.replaceChildren();
+        if (result.out) this.print(result.out);
+        if (result.action === 'exit') this.close();
+      } catch {
+        this.print(t('panel.error'));
+      }
       this.log.scrollTop = this.log.scrollHeight;
-    }
+    });
   }
 
   private onKey(e: KeyboardEvent): void {

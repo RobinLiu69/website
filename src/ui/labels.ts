@@ -94,6 +94,8 @@ export class PlinthLabels {
   /** While a panel is open only the label of the open section stays on screen. */
   setDimmed(dimmed: boolean): void {
     this.root.classList.toggle('is-dimmed', dimmed);
+    // Hidden labels must not be reachable with Tab either.
+    for (const [piece, item] of this.items) item.el.inert = dimmed && piece !== this.active;
   }
 
   /** Forget cached widths: labels change size when their text or state changes. */

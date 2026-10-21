@@ -62,7 +62,10 @@ export class Stage {
     const sun = new THREE.DirectionalLight(0xffffff, 1.9);
     sun.position.set(-6, 13, 8);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    // Smaller phones and low-core machines get a cheaper shadow map.
+    const modest = Math.max(screen.width, screen.height) <= 900 || (navigator.hardwareConcurrency ?? 8) <= 4;
+    const shadowSize = modest ? 1024 : 2048;
+    sun.shadow.mapSize.set(shadowSize, shadowSize);
     const cam = sun.shadow.camera;
     cam.left = -12;
     cam.right = 12;
