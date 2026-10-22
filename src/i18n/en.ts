@@ -3,7 +3,6 @@ import type { Key } from './zh-TW';
 export const en: Record<Key, string> = {
   'meta.title': 'Robin Liu',
 
-  'hud.whisper': 'Checkmate is the only key here.',
   'hud.reset': 'Reset the board',
   'hud.riddle': 'Give me a riddle',
   'hud.sigils': 'Pages you have opened',

@@ -2,7 +2,6 @@
 export const zhTW = {
   'meta.title': 'Robin Liu',
 
-  'hud.whisper': '將死,是這裡唯一的鑰匙。',
   'hud.reset': '重置棋盤',
   'hud.riddle': '給我一道謎題',
   'hud.sigils': '已經打開的頁面',

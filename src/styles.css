@@ -331,7 +331,7 @@ button {
   transform: translate(-50%, 0);
 }
 
-/* ---- bottom: buttons, and the whisper ---- */
+/* ---- bottom: buttons, and a riddle's line ---- */
 
 .hud-bottom {
   bottom: 0;
@@ -363,21 +363,17 @@ button {
   pointer-events: auto;
 }
 
-/* what the board will not say out loud */
-.whisper {
+/* a riddle: one line, and a way to start over or walk away */
+.riddle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   max-width: 100%;
-  color: var(--ink-soft);
-  font-size: 15px;
-  letter-spacing: 0.16em;
-  line-height: 1.6;
-  text-align: center;
-  animation: whisper-in 2.4s ease 4s both;
-  transition:
-    opacity 0.9s ease,
-    transform 0.9s ease;
+  animation: fade-up 1.2s ease both;
 }
 
-@keyframes whisper-in {
+@keyframes fade-up {
   from {
     opacity: 0;
     transform: translateY(6px);
@@ -388,23 +384,6 @@ button {
     transform: none;
     filter: none;
   }
-}
-
-.whisper.gone {
-  opacity: 0;
-  transform: translateY(8px);
-  pointer-events: none;
-  animation: none;
-}
-
-/* a riddle: one line, and a way to start over or walk away */
-.riddle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  max-width: 100%;
-  animation: whisper-in 1.2s ease both;
 }
 
 .riddle[hidden] {
@@ -1266,10 +1245,6 @@ a.card:hover {
 @media (max-height: 520px) {
   .signature {
     font-size: 22px;
-  }
-
-  .whisper {
-    font-size: 13px;
   }
 
   .hud-center {

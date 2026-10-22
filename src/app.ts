@@ -355,7 +355,6 @@ export class App {
     this.game.on('moved', () => {
       this.sfx.move();
       this.input.clearSelection();
-      this.hud.showHint(false);
     });
     this.game.on('captured', () => this.sfx.capture());
     this.game.on('check', () => {
@@ -590,9 +589,8 @@ export class App {
     }, 1600);
   }
 
-  /** Any press or key: the intro hint has done its job, and the idle clock starts over. */
+  /** Any press or key: the idle clock starts over. */
   private onActivity(): void {
-    this.hud.showHint(false);
     this.armIdle();
   }
 

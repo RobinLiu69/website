@@ -29,8 +29,8 @@ export interface HudState {
 }
 
 /**
- * The few marks that are not the board: a signature, small round buttons, a whisper that says what the board
- * will not, and, once something has been opened, a row of sigils to open it again.
+ * The few marks that are not the board: a signature, small round buttons, a riddle's one line while one is
+ * set, and, once something has been opened, a row of sigils to open it again.
  */
 export class Hud {
   private readonly signature = h('h1', { class: 'signature', text: profile.name });
@@ -39,9 +39,7 @@ export class Hud {
   private readonly soundBtn = h('button', { class: 'orb', attrs: { type: 'button' } });
   private readonly resetBtn = h('button', { class: 'orb', attrs: { type: 'button' } });
   private readonly riddleBtn = h('button', { class: 'orb orb-text', attrs: { type: 'button' }, text: '?' });
-  private readonly whisper = h('div', { class: 'whisper' });
   private readonly riddle = h('div', { class: 'riddle', attrs: { hidden: '' } });
-  private hintVisible = true;
   private known = new Set<MatingPiece>();
 
   constructor(
@@ -60,7 +58,7 @@ export class Hud {
         'div',
         { class: 'hud-bottom' },
         h('div', { class: 'hud-left' }, this.resetBtn, this.riddleBtn),
-        h('div', { class: 'hud-center' }, this.riddle, this.whisper),
+        h('div', { class: 'hud-center' }, this.riddle),
       ),
     );
   }
@@ -69,12 +67,6 @@ export class Hud {
   nudgeRiddle(): void {
     this.riddleBtn.classList.add('nudge');
     window.setTimeout(() => this.riddleBtn.classList.remove('nudge'), 9000);
-  }
-
-  /** The whisper fades out once the visitor has touched anything. */
-  showHint(visible: boolean): void {
-    this.hintVisible = visible;
-    this.whisper.classList.toggle('gone', !visible);
   }
 
   refresh(state: HudState): void {
@@ -93,9 +85,6 @@ export class Hud {
     this.riddleBtn.setAttribute('aria-label', t('hud.riddle'));
     this.riddleBtn.title = t('hud.riddle');
     this.riddleBtn.hidden = state.finished;
-
-    this.whisper.textContent = t('hud.whisper');
-    this.whisper.classList.toggle('gone', !this.hintVisible || state.puzzle !== null);
 
     this.renderSigils(state);
     this.renderRiddle(state.puzzle);

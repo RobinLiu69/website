@@ -214,20 +214,28 @@ export class BoardView {
   private buildCoordinates(): void {
     const geometry = new THREE.PlaneGeometry(0.36, 0.36).rotateX(-Math.PI / 2);
     this.disposables.push(geometry);
+    const redraw: Array<() => void> = [];
     const add = (text: string, x: number, z: number): void => {
       const size = 96;
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = size;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      ctx.fillStyle = '#ece8df';
-      ctx.font = `600 ${size * 0.62}px "Caveat", "Segoe Print", "Bradley Hand", system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(text, size / 2, size / 2 + 4);
       const texture = new THREE.CanvasTexture(canvas);
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.anisotropy = 4;
+      // Written again when the handwriting font arrives, if it was not there yet.
+      const write = (): void => {
+        ctx.clearRect(0, 0, size, size);
+        ctx.fillStyle = '#ece8df';
+        ctx.font = `600 ${size * 0.62}px "Caveat", "Segoe Print", "Bradley Hand", system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, size / 2, size / 2 + 4);
+        texture.needsUpdate = true;
+      };
+      write();
+      redraw.push(write);
       const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, opacity: 0.5, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(x, 0.07, z);
@@ -236,6 +244,7 @@ export class BoardView {
       this.coordinateMaterials.push(material);
       this.disposables.push(texture, material);
     };
+    document.fonts?.addEventListener('loadingdone', () => redraw.forEach((write) => write()));
     const label = 4 + FRAME / 2;
     for (let file = 0; file < 8; file++) add('abcdefgh'.charAt(file), file - 3.5, label);
     for (let rank = 0; rank < 8; rank++) add(String(rank + 1), -label, 3.5 - rank);
