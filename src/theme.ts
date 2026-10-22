@@ -4,28 +4,34 @@
  * restyling the whole site means editing this object.
  */
 export const PALETTE = {
-  bg: 0xf2ede4,
-  ink: 0x3a3532,
-  inkSoft: 0x6f655d,
+  // The drawing: ink on paper, with one marker colour for whatever is live.
+  bg: 0xf6f3ec,
+  ink: 0x1d1d21,
+  inkSoft: 0x5d5d63,
   accent: 0xe2704a,
   accentDeep: 0xc4562f,
   accentSoft: 0xf6c7b5,
 
-  boardLight: 0xe8dcc8,
-  boardDark: 0xb89f82,
-  boardRim: 0x8f7960,
-  boardBase: 0x6f5c49,
+  // The 3D scene is lit in greys: the sketch pass reads brightness as "how much ink",
+  // so a darker grey is simply more hatching.
+  boardLight: 0xf2f2f2,
+  boardDark: 0xa6a6a6,
+  boardRim: 0x9c9c9c,
+  boardBase: 0x8a8a8a,
 
-  white: 0xfaf7f2,
-  whiteShade: 0xe3dccf,
-  black: 0x3a3532,
-  blackShade: 0x4f4944,
+  white: 0xf4f4f4,
+  whiteShade: 0xdddddd,
+  whiteDark: 0x0e0e0e,
+  whiteLight: 0xffffff,
+  black: 0x424242,
+  blackShade: 0x4e4e4e,
+  blackDark: 0x101010,
+  blackLight: 0x888888,
 
-  plinth: 0xd9cbb3,
-  plinthDark: 0xb9a78c,
-  ghost: 0xcfc6b8,
-  ground: 0xe9e1d3,
-  shadow: 0x6b5a45,
+  plinth: 0xececec,
+  plinthDark: 0xc9c9c9,
+  ground: 0xffffff,
+  shadow: 0x000000,
 } as const;
 
 export const hex = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;

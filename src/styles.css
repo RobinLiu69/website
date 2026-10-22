@@ -1,23 +1,28 @@
 :root {
   color-scheme: light;
-  --bg: #f2ede4;
-  --ink: #3a3532;
-  --ink-soft: #6f655d;
+  /* The page is a sheet of paper and everything on it is drawn in pen. */
+  --bg: #f7f5f0;
+  --ink: #1d1d21;
+  --ink-soft: #5d5d63;
   --accent: #e2704a;
   --accent-deep: #c4562f;
   --accent-soft: #f6c7b5;
-  --board-light: #e8dcc8;
-  --board-dark: #b89f82;
-  --board-rim: #8f7960;
-  --plinth: #d9cbb3;
+  --marker: rgba(226, 112, 74, 0.3);
 
-  --card: rgba(251, 248, 242, 0.94);
-  --line: rgba(143, 121, 96, 0.24);
-  --shadow: 0 24px 64px rgba(70, 52, 36, 0.18);
+  --card: #fbfaf6;
+  --line: rgba(29, 29, 33, 0.88);
+  --pencil: rgba(29, 29, 33, 0.26);
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  --font-ui: ui-rounded, 'SF Pro Rounded', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui,
-    sans-serif;
+  /* Rectangles and pills are never quite regular when drawn by hand. */
+  --wobble: 16px 11px 18px 12px / 12px 18px 11px 16px;
+  --wobble-pill: 26px 19px 24px 20px / 20px 25px 19px 27px;
+  /* A shadow is a patch of diagonal strokes, not a blur. */
+  --hatch: repeating-linear-gradient(118deg, var(--ink) 0 1.1px, transparent 1.1px 4.2px);
+
+  --font-ui: 'LXGW WenKai TC', 'Klee One', 'Kaiti TC', 'BiauKai', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei',
+    ui-rounded, system-ui, sans-serif;
+  --font-hand: 'Caveat', 'LXGW WenKai TC', 'Bradley Hand', 'Segoe Print', 'Kaiti TC', cursive;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Noto Sans Mono', monospace;
 
   --panel-w: 440px;
@@ -38,8 +43,13 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-ui);
+  font-size: 15px;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: var(--marker);
 }
 
 button {
@@ -48,8 +58,8 @@ button {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px dashed var(--accent-deep);
+  outline-offset: 3px;
 }
 
 #app {
@@ -93,8 +103,8 @@ button {
 }
 
 .stage-canvas:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -4px;
+  outline: 2px dashed var(--accent-deep);
+  outline-offset: -6px;
 }
 
 /* ---------------------------- plinth labels ---------------------------- */
@@ -120,13 +130,8 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 12px 5px 5px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(251, 248, 242, 0.9);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 8px 22px rgba(70, 52, 36, 0.14);
+  padding: 5px 13px 5px 5px;
+  border-radius: var(--wobble-pill);
   white-space: nowrap;
   cursor: pointer;
   pointer-events: auto;
@@ -137,10 +142,64 @@ button {
     background 0.15s ease;
 }
 
+/*
+ * The sketch box. A chip, button or panel is a sheet of paper with a pen outline and a patch of hatching
+ * behind it for a shadow. Both are pseudo-elements, so the element itself keeps its layout.
+ */
+.plinth-label,
+.pill-btn,
+.egg-chip,
+.puzzle-bar,
+.hint,
+.toast,
+.panel {
+  isolation: isolate;
+  border: 1.5px solid transparent;
+}
+
+.plinth-label::before,
+.pill-btn::before,
+.egg-chip::before,
+.puzzle-bar::before,
+.hint::before,
+.toast::before,
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 4px -4px -4px 4px;
+  z-index: -2;
+  border-radius: inherit;
+  background: var(--hatch);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.plinth-label::after,
+.pill-btn::after,
+.egg-chip::after,
+.puzzle-bar::after,
+.hint::after,
+.toast::after,
+.panel::after {
+  content: '';
+  position: absolute;
+  inset: -1.5px;
+  z-index: -1;
+  border: 1.5px solid var(--line);
+  border-radius: inherit;
+  background: var(--fill, var(--card));
+  box-shadow: 0 0 0 1px var(--card), 0 0 0 2.5px var(--pencil);
+  pointer-events: none;
+}
+
 .plinth-label:hover,
 .plinth-label.is-hover {
-  border-color: var(--accent);
-  background: #fff;
+  --fill: linear-gradient(var(--marker), var(--marker)), var(--card);
+}
+
+.plinth-label:hover::after,
+.plinth-label.is-hover::after {
+  border-color: var(--accent-deep);
 }
 
 .labels.is-dimmed .plinth-label:not(.is-active) {
@@ -155,13 +214,13 @@ button {
   height: 30px;
   border-radius: 50%;
   background: var(--ink);
-  color: #f7f3ec;
+  color: var(--bg);
   font-size: 18px;
   line-height: 1;
 }
 
 .plinth-label.is-open .pl-glyph {
-  background: var(--accent);
+  background: var(--accent-deep);
 }
 
 .pl-text {
@@ -172,12 +231,12 @@ button {
 }
 
 .pl-title {
-  font-size: 13.5px;
-  font-weight: 650;
+  font-size: 14.5px;
+  font-weight: 700;
 }
 
 .pl-hint {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink-soft);
 }
 
@@ -236,21 +295,22 @@ button {
 
 .brand svg {
   flex: none;
-  filter: drop-shadow(0 4px 10px rgba(70, 52, 36, 0.2));
 }
 
 .brand-name {
   margin: 0;
-  font-size: 18px;
-  font-weight: 650;
+  font-family: var(--font-hand);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
   letter-spacing: 0.01em;
   user-select: none;
   cursor: default;
 }
 
 .tagline {
-  margin: 2px 0 0;
-  font-size: 13px;
+  margin: 3px 0 0;
+  font-size: 13.5px;
   color: var(--ink-soft);
 }
 
@@ -265,26 +325,21 @@ button {
   justify-content: center;
   gap: 8px;
   height: 38px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(251, 248, 242, 0.78);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  font-size: 13px;
-  font-weight: 600;
+  padding: 0 15px;
+  border-radius: var(--wobble-pill);
+  position: relative;
+  font-size: 14px;
+  font-weight: 700;
   line-height: 1;
   cursor: pointer;
   transition:
     background 0.15s ease,
-    border-color 0.15s ease,
     transform 0.15s ease;
 }
 
 .pill-btn:hover {
-  background: #fff;
-  border-color: rgba(143, 121, 96, 0.5);
-  transform: translateY(-1px);
+  --fill: linear-gradient(var(--marker), var(--marker)), var(--card);
+  transform: translate(-1px, -1px) rotate(-0.6deg);
 }
 
 .pill-btn.icon-only {
@@ -322,13 +377,11 @@ button {
   max-width: 100%;
   max-height: 120px;
   margin-top: 8px;
-  padding: 10px 18px;
-  overflow: hidden;
-  border-radius: 18px;
-  background: rgba(58, 53, 50, 0.9);
-  color: #f7f3ec;
-  font-size: 13.5px;
-  line-height: 1.45;
+  padding: 10px 20px;
+  border-radius: var(--wobble);
+  position: relative;
+  font-size: 14.5px;
+  line-height: 1.5;
   text-align: center;
   transition:
     opacity 0.5s ease,
@@ -341,8 +394,8 @@ button {
 .hint-keys {
   display: block;
   margin-top: 2px;
-  font-size: 12px;
-  opacity: 0.65;
+  font-size: 12.5px;
+  color: var(--ink-soft);
 }
 
 .hint.gone {
@@ -360,13 +413,12 @@ button {
   align-items: center;
   gap: 6px;
   height: 32px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgba(251, 248, 242, 0.7);
-  border: 1px solid var(--line);
-  color: var(--ink-soft);
-  font-size: 12.5px;
-  font-weight: 600;
+  padding: 0 13px;
+  border-radius: var(--wobble-pill);
+  position: relative;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 700;
 }
 
 .puzzle-bar {
@@ -376,11 +428,9 @@ button {
   max-width: 100%;
   margin-bottom: 0;
   padding: 8px 10px 8px 16px;
-  border-radius: 999px;
-  background: rgba(251, 248, 242, 0.94);
-  border: 1px solid var(--line);
-  box-shadow: 0 10px 30px rgba(70, 52, 36, 0.14);
-  font-size: 13.5px;
+  border-radius: var(--wobble-pill);
+  position: relative;
+  font-size: 14.5px;
 }
 
 .puzzle-bar[hidden] {
@@ -388,10 +438,9 @@ button {
 }
 
 .pz-label {
-  font-size: 11px;
+  font-family: var(--font-hand);
+  font-size: 19px;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   color: var(--accent-deep);
 }
 
@@ -399,7 +448,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-weight: 650;
+  font-weight: 700;
 }
 
 .pz-glyph {
@@ -416,26 +465,23 @@ button {
   align-items: center;
   gap: 6px;
   height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  padding: 0 13px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--wobble-pill);
   background: transparent;
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: 13.5px;
+  font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
+  transition: background 0.15s ease;
 }
 
 .mini-btn:hover {
-  background: #fff;
-  border-color: var(--accent);
+  background: var(--marker);
 }
 
 .mini-btn.done {
-  border-color: var(--accent);
+  border-color: var(--accent-deep);
   color: var(--accent-deep);
 }
 
@@ -486,13 +532,11 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 16px;
-  border-radius: 14px;
-  background: rgba(58, 53, 50, 0.94);
-  color: #f7f3ec;
-  font-size: 14px;
-  line-height: 1.4;
-  box-shadow: 0 14px 36px rgba(40, 30, 22, 0.25);
+  padding: 10px 18px;
+  border-radius: var(--wobble);
+  position: relative;
+  font-size: 15px;
+  line-height: 1.45;
   opacity: 0;
   transform: translateY(10px);
   transition:
@@ -509,25 +553,24 @@ button {
   display: grid;
   place-items: center;
   flex: none;
-  color: var(--accent-soft);
+  color: var(--ink-soft);
 }
 
 .toast-unlock {
-  background: var(--accent-deep);
+  --fill: linear-gradient(var(--marker), var(--marker)), var(--card);
+  font-weight: 700;
 }
 
 .toast-unlock .toast-icon {
-  color: #fff;
+  color: var(--accent-deep);
 }
 
-.toast-egg {
-  background: #fff;
-  color: var(--ink);
-  border: 1px solid var(--accent);
+.toast-egg::after {
+  border-color: var(--accent-deep);
 }
 
 .toast-egg .toast-icon {
-  color: var(--accent);
+  color: var(--accent-deep);
 }
 
 /* ------------------------------ banner ------------------------------ */
@@ -548,21 +591,25 @@ button {
 }
 
 .banner-main {
+  display: inline;
   max-width: 92vw;
   text-wrap: balance;
-  font-size: clamp(30px, 5.4vw, 66px);
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  line-height: 1.1;
+  font-family: var(--font-hand);
+  font-size: clamp(40px, 7vw, 92px);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
   color: var(--ink);
-  text-shadow:
-    0 2px 0 #fff,
-    0 14px 44px rgba(226, 112, 74, 0.4);
+  /* underlined with a marker, as if the words had just been written and highlighted */
+  background: linear-gradient(transparent 60%, var(--marker) 60% 90%, transparent 90%);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  padding: 0 0.15em;
 }
 
 .banner-sub {
-  margin-top: 6px;
-  font-size: 18px;
+  margin-top: 8px;
+  font-size: 19px;
   color: var(--ink-soft);
 }
 
@@ -595,12 +642,7 @@ button {
   z-index: 20;
   display: flex;
   flex-direction: column;
-  background: var(--card);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  box-shadow: var(--shadow);
+  border-radius: 20px 14px 22px 15px / 15px 22px 14px 20px;
   opacity: 0;
   visibility: hidden;
   outline: none;
@@ -638,27 +680,30 @@ button {
   align-items: center;
   gap: 12px;
   padding: 16px 16px 14px 20px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1.5px dashed var(--pencil);
 }
 
 .panel-chip {
   display: grid;
   place-items: center;
   flex: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  font-size: 22px;
+  width: 42px;
+  height: 42px;
+  border: 1.5px solid var(--line);
+  border-radius: 52% 48% 55% 45% / 48% 54% 46% 52%;
+  background: var(--marker);
+  color: var(--ink);
+  font-size: 23px;
   line-height: 1;
 }
 
 .panel-title {
   flex: 1;
   margin: 0;
-  font-size: 20px;
+  font-family: var(--font-hand);
+  font-size: 30px;
   font-weight: 700;
+  line-height: 1.1;
 }
 
 .icon-btn {
@@ -674,7 +719,7 @@ button {
 }
 
 .icon-btn:hover {
-  background: rgba(143, 121, 96, 0.16);
+  background: var(--marker);
 }
 
 .panel-body {
@@ -683,7 +728,7 @@ button {
   padding: 18px 22px 26px;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: rgba(143, 121, 96, 0.45) transparent;
+  scrollbar-color: var(--pencil) transparent;
 }
 
 .panel-foot {
@@ -691,7 +736,7 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-top: 1px solid var(--line);
+  border-top: 1.5px dashed var(--pencil);
 }
 
 .nav-btn {
@@ -701,16 +746,16 @@ button {
   height: 34px;
   padding: 0 12px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--wobble-pill);
   background: transparent;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
 .nav-btn:hover:not(:disabled) {
-  background: rgba(143, 121, 96, 0.16);
+  background: var(--marker);
 }
 
 .nav-btn:disabled {
@@ -727,23 +772,26 @@ button {
 
 .prose p {
   margin: 0 0 12px;
-  font-size: 15px;
-  line-height: 1.75;
+  font-size: 16px;
+  line-height: 1.8;
 }
 
 .prose .lead {
   margin: 2px 0 14px;
-  font-size: 25px;
-  line-height: 1.25;
+  font-family: var(--font-hand);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.15;
 }
 
 .prose .sub {
+  display: inline-block;
   margin: 24px 0 10px;
-  font-size: 12px;
+  font-family: var(--font-hand);
+  font-size: 22px;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
+  color: var(--ink);
+  background: linear-gradient(transparent 62%, var(--marker) 62% 92%, transparent 92%);
 }
 
 .prose .sub:first-child {
@@ -757,11 +805,12 @@ button {
 .placeholder-note {
   margin-top: 24px !important;
   padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(226, 112, 74, 0.1);
+  border: 1.5px dashed var(--accent-deep);
+  border-radius: var(--wobble);
+  background: rgba(226, 112, 74, 0.08);
   color: var(--accent-deep);
-  font-size: 12.5px !important;
-  line-height: 1.5 !important;
+  font-size: 13.5px !important;
+  line-height: 1.55 !important;
 }
 
 .facts {
@@ -789,21 +838,19 @@ button {
 .card {
   display: block;
   padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.55);
+  border: 1.5px solid var(--line);
+  border-radius: var(--wobble);
+  background: var(--card);
   color: inherit;
   text-decoration: none;
   transition:
-    border-color 0.15s ease,
     transform 0.15s ease,
     background 0.15s ease;
 }
 
 a.card:hover {
-  border-color: var(--accent);
-  background: #fff;
-  transform: translateY(-2px);
+  background: linear-gradient(var(--marker), var(--marker)), var(--card);
+  transform: translate(-1px, -2px) rotate(-0.4deg);
 }
 
 .card-head {
@@ -815,13 +862,15 @@ a.card:hover {
 
 .card h4 {
   margin: 0;
-  font-size: 16px;
+  font-family: var(--font-hand);
+  font-size: 23px;
+  line-height: 1.15;
 }
 
 .card p {
   margin: 6px 0 0;
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 14.5px;
+  line-height: 1.65;
   color: var(--ink-soft);
 }
 
@@ -835,11 +884,12 @@ a.card:hover {
 }
 
 .tags li {
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: rgba(184, 159, 130, 0.24);
-  color: #6b5a45;
-  font: 600 11.5px var(--font-mono);
+  padding: 2px 10px;
+  border: 1.2px solid var(--line);
+  border-radius: var(--wobble-pill);
+  background: var(--card);
+  color: var(--ink);
+  font: 700 12.5px var(--font-ui);
 }
 
 .skill-group {
@@ -849,8 +899,9 @@ a.card:hover {
 }
 
 .skill-name {
-  font-size: 13.5px;
-  font-weight: 650;
+  font-family: var(--font-hand);
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .skill-group .tags {
@@ -861,7 +912,7 @@ a.card:hover {
   margin: 0;
   padding: 0 0 0 8px;
   list-style: none;
-  border-left: 2px solid var(--line);
+  border-left: 2px dashed var(--line);
 }
 
 .timeline li {
@@ -876,20 +927,21 @@ a.card:hover {
   position: absolute;
   left: -14px;
   top: 5px;
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid var(--line);
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--marker);
   box-shadow: 0 0 0 3px var(--card);
 }
 
 .timeline .when {
-  font: 600 12px var(--font-mono);
+  font: 700 14px var(--font-hand);
   color: var(--ink-soft);
 }
 
 .timeline .detail {
-  font-size: 14px;
+  font-size: 14.5px;
   color: var(--ink-soft);
 }
 
@@ -907,30 +959,30 @@ a.card:hover {
   align-items: center;
   gap: 2px 12px;
   padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.55);
+  border: 1.5px solid var(--line);
+  border-radius: var(--wobble);
+  background: var(--card);
 }
 
 .link-label {
   grid-column: 1 / -1;
-  font-size: 11.5px;
+  font-family: var(--font-hand);
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--ink-soft);
 }
 
 .link-value {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--accent-deep);
-  font-weight: 600;
-  text-decoration: none;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: underline wavy var(--accent-deep);
+  text-underline-offset: 4px;
 }
 
 .link-value:hover {
-  text-decoration: underline;
+  background: var(--marker);
 }
 
 .pill-link {
@@ -938,18 +990,17 @@ a.card:hover {
   align-items: center;
   gap: 6px;
   margin-top: 4px;
-  padding: 8px 14px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  padding: 8px 15px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--wobble-pill);
   color: var(--ink);
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: 14.5px;
+  font-weight: 700;
   text-decoration: none;
 }
 
 .pill-link:hover {
-  border-color: var(--accent);
-  background: #fff;
+  background: var(--marker);
 }
 
 .wall-count {
@@ -958,16 +1009,17 @@ a.card:hover {
 }
 
 .meter {
-  height: 8px;
+  height: 12px;
   overflow: hidden;
-  border-radius: 999px;
-  background: rgba(143, 121, 96, 0.2);
+  border: 1.5px solid var(--line);
+  border-radius: var(--wobble-pill);
+  background: var(--card);
 }
 
 .meter span {
   display: block;
   height: 100%;
-  background: var(--accent);
+  background: repeating-linear-gradient(118deg, var(--accent-deep) 0 1.5px, transparent 1.5px 4px);
   transition: width 0.5s var(--ease);
 }
 
@@ -986,15 +1038,15 @@ a.card:hover {
   column-gap: 8px;
   align-items: center;
   padding: 10px 12px;
-  border: 1px dashed rgba(143, 121, 96, 0.45);
-  border-radius: 12px;
-  opacity: 0.72;
+  border: 1.5px dashed var(--pencil);
+  border-radius: var(--wobble);
+  opacity: 0.7;
 }
 
 .egg.is-found {
   border-style: solid;
-  border-color: var(--accent);
-  background: rgba(226, 112, 74, 0.08);
+  border-color: var(--line);
+  background: linear-gradient(var(--marker), var(--marker)), var(--card);
   opacity: 1;
 }
 
@@ -1004,16 +1056,16 @@ a.card:hover {
 }
 
 .egg.is-found .egg-icon {
-  color: var(--accent);
+  color: var(--accent-deep);
 }
 
 .egg-name {
-  font-size: 13.5px;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .egg-desc {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--ink-soft);
 }
 
@@ -1028,11 +1080,11 @@ a.card:hover {
   flex-direction: column;
   width: min(720px, calc(100% - 24px));
   height: min(340px, 52vh);
-  border-radius: 14px;
-  background: #26221f;
-  color: #e9e2d6;
+  border-radius: 20px 12px 22px 13px / 13px 22px 12px 20px;
+  background: var(--ink);
+  color: #efece4;
   font: 13.5px/1.55 var(--font-mono);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.38);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--ink), 8px 8px 0 -1px var(--bg), 8px 8px 0 0 var(--ink);
   opacity: 0;
   visibility: hidden;
   transform: translate(-50%, 18px);

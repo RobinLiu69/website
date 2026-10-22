@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#F2EDE4" />
+    <meta name="theme-color" content="#F7F5F0" />
     <title>Robin Liu · 3D 西洋棋作品集</title>
     <meta
       name="description"
-      content="Robin Liu 的作品集,以低多邊形 3D 西洋棋呈現:把棋子拖到定位、將殺對手,就能解鎖內容。A portfolio played as a low-poly 3D chess board: checkmate to unlock."
+      content="Robin Liu 的作品集,畫成一張鋼筆草圖的 3D 西洋棋:把棋子拖到定位、將殺對手,就能解鎖內容。A portfolio drawn as a pen sketch of a 3D chess board: checkmate to unlock."
     />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Robin Liu · 3D 西洋棋作品集" />
@@ -17,16 +17,25 @@
     />
     <!--social-image-->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Handwriting fonts. They load without blocking the page; until they arrive, system fonts are used. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=LXGW+WenKai+TC:wght@400;700&display=swap"
+      media="print"
+      onload="this.media = 'all'"
+    />
     <style>
       /* Critical styles only: the rest lives in src/styles.css. */
       html,
       body {
         margin: 0;
         height: 100%;
-        background: #f2ede4;
-        color: #3a3532;
-        font-family: ui-rounded, 'SF Pro Rounded', 'Noto Sans TC', 'PingFang TC',
-          'Microsoft JhengHei', system-ui, sans-serif;
+        background: #f7f5f0;
+        color: #1d1d21;
+        font-family: 'LXGW WenKai TC', 'Klee One', 'Kaiti TC', 'BiauKai', 'PingFang TC', 'Noto Sans TC',
+          'Microsoft JhengHei', ui-rounded, system-ui, sans-serif;
       }
       #boot {
         position: fixed;
@@ -35,7 +44,7 @@
         place-items: center;
         font-size: 14px;
         letter-spacing: 0.08em;
-        color: #8c7560;
+        color: #5d5d63;
         transition: opacity 0.4s ease;
       }
       #boot.done {
@@ -48,7 +57,7 @@
     <div id="app"></div>
     <div id="boot" role="status">載入棋盤中… Loading board…</div>
     <noscript>
-      <p style="position: fixed; inset: 0; display: grid; place-items: center; margin: 0; padding: 24px; text-align: center; background: #f2ede4">
+      <p style="position: fixed; inset: 0; display: grid; place-items: center; margin: 0; padding: 24px; text-align: center; background: #f7f5f0">
         這個網站是一盤 3D 西洋棋,需要啟用 JavaScript 與 WebGL。<br />
         This site is a 3D chess board and needs JavaScript and WebGL.
       </p>

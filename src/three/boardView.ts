@@ -11,6 +11,8 @@ import {
 } from '../chess/types';
 import { PALETTE } from '../theme';
 import type { PieceFactory } from './pieceMeshes';
+import { chamferBox } from './pieces/toolkit';
+import { MARK_LAYER } from './sketch/pipeline';
 import { type Tweens, ease } from './tween';
 
 /** Files run left to right, ranks run toward -z, so white sits nearest the camera. */
@@ -103,6 +105,7 @@ export class BoardView {
   ) {
     this.root.name = 'board';
     this.buildBoard();
+    this.buildCoordinates();
     this.root.add(this.piecesRoot);
 
     const fill = new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2);
@@ -120,6 +123,7 @@ export class BoardView {
       mark.position.y = 0.012;
       mark.visible = false;
       mark.renderOrder = 2;
+      mark.layers.set(MARK_LAYER);
       this.root.add(mark);
     }
     for (let i = 0; i < 2; i++) {
@@ -127,23 +131,25 @@ export class BoardView {
       mark.position.y = 0.014;
       mark.visible = false;
       mark.renderOrder = 2;
+      mark.layers.set(MARK_LAYER);
       this.checkMarks.push(mark);
       this.root.add(mark);
     }
   }
 
   private buildBoard(): void {
-    const squareGeo = new THREE.BoxGeometry(1, 0.2, 1);
-    const lightMat = new THREE.MeshStandardMaterial({ color: PALETTE.boardLight, roughness: 0.9 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: PALETTE.boardDark, roughness: 0.9 });
-    const light = new THREE.InstancedMesh(squareGeo, lightMat, 32);
-    const dark = new THREE.InstancedMesh(squareGeo, darkMat, 32);
+    // Each square is a chamfered tile with a hairline gap around it, so the pen finds a line between every pair.
+    const tileGeo = chamferBox(0.985, 0.985, 0.2, 0.006).rotateX(-Math.PI / 2).translate(0, -0.1, 0);
+    const lightMat = new THREE.MeshLambertMaterial({ color: PALETTE.boardLight });
+    const darkMat = new THREE.MeshLambertMaterial({ color: PALETTE.boardDark });
+    const light = new THREE.InstancedMesh(tileGeo, lightMat, 32);
+    const dark = new THREE.InstancedMesh(tileGeo, darkMat, 32);
     const matrix = new THREE.Matrix4();
     let li = 0;
     let di = 0;
     for (let rank = 0; rank < 8; rank++) {
       for (let file = 0; file < 8; file++) {
-        matrix.makeTranslation(file - 3.5, -0.1, 3.5 - rank);
+        matrix.makeTranslation(file - 3.5, 0, 3.5 - rank);
         // a1 is a dark square.
         if ((file + rank) % 2 === 0) dark.setMatrixAt(di++, matrix);
         else light.setMatrixAt(li++, matrix);
@@ -155,7 +161,7 @@ export class BoardView {
       this.root.add(mesh);
     }
 
-    const rimMat = new THREE.MeshStandardMaterial({ color: PALETTE.boardRim, roughness: 0.9, flatShading: true });
+    const rimMat = new THREE.MeshLambertMaterial({ color: PALETTE.boardRim });
     const rimParts: Array<[number, number, number, number]> = [
       // width, depth, x, z
       [8.8, 0.4, 0, -4.2],
@@ -164,50 +170,55 @@ export class BoardView {
       [0.4, 8.0, 4.2, 0],
     ];
     const rimGeos = rimParts.map(([w, d, x, z]) => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.28, d), rimMat);
+      const geometry = chamferBox(w, d, 0.28, 0.03).rotateX(-Math.PI / 2);
+      const mesh = new THREE.Mesh(geometry, rimMat);
       mesh.position.set(x, -0.06, z);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       this.root.add(mesh);
-      return mesh.geometry;
+      return geometry;
     });
-
-    this.buildCoordinates();
 
     // A tapered slab underneath, so the board reads as a floating tray.
     const baseGeo = new THREE.CylinderGeometry(6.5, 5.4, 0.55, 4, 1).rotateY(Math.PI / 4);
-    const baseMat = new THREE.MeshStandardMaterial({ color: PALETTE.boardBase, roughness: 0.95, flatShading: true });
+    const baseMat = new THREE.MeshLambertMaterial({ color: PALETTE.boardBase });
     const base = new THREE.Mesh(baseGeo, baseMat);
     base.position.y = -0.475;
     base.castShadow = true;
     base.receiveShadow = true;
     this.root.add(base);
 
-    this.disposables.push(squareGeo, lightMat, darkMat, rimMat, baseGeo, baseMat, ...rimGeos);
+    this.disposables.push(tileGeo, lightMat, darkMat, rimMat, baseGeo, baseMat, ...rimGeos);
   }
 
-  /** a-h along the front rim and 1-8 down the left one, as seen from white's side. */
+  /**
+   * a-h along the front rim and 1-8 down the left one, as seen from white's side. They are written in pen
+   * over the finished drawing (see Stage.overlay), so they are not part of `root`.
+   */
+  readonly coordinates = new THREE.Group();
+
   private buildCoordinates(): void {
-    const geometry = new THREE.PlaneGeometry(0.34, 0.34).rotateX(-Math.PI / 2);
+    const geometry = new THREE.PlaneGeometry(0.4, 0.4).rotateX(-Math.PI / 2);
     this.disposables.push(geometry);
     const add = (text: string, x: number, z: number): void => {
-      const size = 64;
+      const size = 96;
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = size;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      ctx.fillStyle = '#f3e9d8';
-      ctx.font = '600 42px system-ui, sans-serif';
+      ctx.fillStyle = '#1d1d21';
+      ctx.font = `600 ${size * 0.62}px "Caveat", "Segoe Print", "Bradley Hand", system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(text, size / 2, size / 2 + 3);
+      ctx.fillText(text, size / 2, size / 2 + 4);
       const texture = new THREE.CanvasTexture(canvas);
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.anisotropy = 4;
-      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
+      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, opacity: 0.8 });
       const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(x, 0.085, z);
-      this.root.add(mesh);
+      mesh.position.set(x, 0.09, z);
+      mesh.rotation.y = (Math.random() - 0.5) * 0.25;
+      this.coordinates.add(mesh);
       this.disposables.push(texture, material);
     };
     for (let file = 0; file < 8; file++) add('abcdefgh'.charAt(file), file - 3.5, 4.2);

@@ -23,7 +23,7 @@ export interface FitMargins {
   bottom: number;
 }
 
-export const HOME_PITCH = 0.64;
+export const HOME_PITCH = 0.74;
 
 const clamp = (v: number, [lo, hi]: readonly [number, number]): number => Math.min(hi, Math.max(lo, v));
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;

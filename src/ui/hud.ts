@@ -24,9 +24,9 @@ const MARK = `<svg viewBox="0 0 64 64" width="34" height="34" aria-hidden="true"
   <polygon points="32,10 41,15 41,25 32,30 23,25 23,15" fill="var(--accent)"/>
   <polygon points="32,10 41,15 32,19 23,15" fill="#f0987a"/>
   <polygon points="32,19 41,15 41,25 32,30" fill="var(--accent-deep)"/>
-  <polygon points="22,31 42,31 39,36 25,36" fill="#f2ede4"/>
+  <polygon points="22,31 42,31 39,36 25,36" fill="#f7f5f0"/>
   <polygon points="26,36 38,36 40,47 24,47" fill="#e3dccf"/>
-  <polygon points="19,47 45,47 48,54 16,54" fill="#f2ede4"/>
+  <polygon points="19,47 45,47 48,54 16,54" fill="#f7f5f0"/>
 </svg>`;
 
 /** Brand, language and sound buttons, reset, the intro hint, the puzzle bar and the egg counter. */

@@ -18,12 +18,15 @@ const TOKEN_HEIGHT = 2.6;
 export function plinthPositions(kind: LayoutKind): Record<MatingPiece, THREE.Vector3> {
   const out = {} as Record<MatingPiece, THREE.Vector3>;
   if (kind === 'arc') {
-    const angles: Record<MatingPiece, number> = { p: 180, n: 135, q: 90, b: 45, r: 0 };
-    for (const piece of STAGE_ORDER) {
-      const radius = piece === 'q' ? 8.7 : 7.9;
-      const a = (angles[piece] * Math.PI) / 180;
-      out[piece] = new THREE.Vector3(radius * Math.cos(a), 0, -radius * Math.sin(a));
-    }
+    // Close round the board without touching it: the knight's and bishop's stands tuck in beside its far corners.
+    const spots: Record<MatingPiece, readonly [number, number]> = {
+      p: [-6.9, 0.2],
+      n: [-6.3, -4.9],
+      q: [0, -7.0],
+      b: [6.3, -4.9],
+      r: [6.9, 0.2],
+    };
+    for (const piece of STAGE_ORDER) out[piece] = new THREE.Vector3(spots[piece][0], 0, spots[piece][1]);
   } else {
     STAGE_ORDER.forEach((piece, i) => {
       out[piece] = new THREE.Vector3((i - 2) * 2.3, 0, piece === 'q' ? -7.6 : -7.0);

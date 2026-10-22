@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PALETTE } from '../theme';
+import { MARK_LAYER } from './sketch/pipeline';
 import type { Stage } from './stage';
 
 interface Bit {
@@ -31,7 +32,7 @@ export class Effects {
   private readonly ripples: Ripple[] = [];
   private readonly shapes = [new THREE.TetrahedronGeometry(1), new THREE.OctahedronGeometry(1)];
   private readonly ringGeometry = new THREE.RingGeometry(0.9, 1, 32).rotateX(-Math.PI / 2);
-  private readonly materials = new Map<number, THREE.MeshStandardMaterial>();
+  private readonly materials = new Map<number, THREE.MeshLambertMaterial>();
 
   constructor(private readonly stage: Stage) {
     this.group.name = 'effects';
@@ -39,10 +40,10 @@ export class Effects {
     stage.onFrame((dt) => this.update(dt));
   }
 
-  private material(color: number): THREE.MeshStandardMaterial {
+  private material(color: number): THREE.MeshLambertMaterial {
     let m = this.materials.get(color);
     if (!m) {
-      m = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.8 });
+      m = new THREE.MeshLambertMaterial({ color, flatShading: true });
       this.materials.set(color, m);
     }
     return m;
@@ -117,6 +118,7 @@ export class Effects {
       side: THREE.DoubleSide,
     });
     const mesh = new THREE.Mesh(this.ringGeometry, material);
+    mesh.layers.set(MARK_LAYER);
     mesh.position.copy(at);
     mesh.scale.setScalar(0.4);
     this.group.add(mesh);

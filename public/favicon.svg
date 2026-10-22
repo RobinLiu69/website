@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#F2EDE4"/>
+  <rect width="64" height="64" rx="14" fill="#F7F5F0"/>
   <!-- low-poly pawn: faceted head, collar, stem, base -->
   <polygon points="32,10 41,15 41,25 32,30 23,25 23,15" fill="#E2704A"/>
   <polygon points="32,10 41,15 32,19 23,15" fill="#EE8E6C"/>

@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { PALETTE } from '../theme';
 import { CameraRig } from './cameraRig';
+import { addLighting } from './lighting';
+import { MARK_LAYER, SketchPipeline } from './sketch/pipeline';
+import { GROUND_Y } from './layout';
 import { Tweens } from './tween';
 
 export class WebGLUnavailableError extends Error {
@@ -19,6 +22,9 @@ export class Stage {
   readonly tweens = new Tweens();
   readonly renderer: THREE.WebGLRenderer;
   readonly rig: CameraRig;
+  readonly sketch: SketchPipeline;
+  /** Drawn last, over the finished picture: the pen-work that is not part of the scene (coordinates, construction lines). */
+  readonly overlay = new THREE.Scene();
   readonly reducedMotion: boolean;
   /** Longest slice of time one frame may advance animations by, in seconds. */
   maxDt = 0.1;
@@ -26,6 +32,11 @@ export class Stage {
   private readonly hooks = new Set<FrameHook>();
   private readonly resizeHooks = new Set<(w: number, h: number) => void>();
   private readonly observer: ResizeObserver;
+  private readonly modest: boolean;
+  /** The most pixels per CSS pixel the drawing may use. It only ever comes down, when the device cannot keep up. */
+  private ratioCap: number;
+  private frameMs = 16;
+  private slowFrames = 0;
   private last = 0;
   private time = 0;
 
@@ -48,70 +59,28 @@ export class Stage {
     this.rig = new CameraRig(this.tweens);
     this.rig.reduced = this.reducedMotion;
 
-    this.buildEnvironment();
+    // Smaller phones and low-core machines get a cheaper shadow map and a coarser drawing.
+    this.modest = Math.max(screen.width, screen.height) <= 900 || (navigator.hardwareConcurrency ?? 8) <= 4;
+    this.ratioCap = this.modest ? 1.5 : 2;
+    addLighting(this.scene, { shadowSize: this.modest ? 1024 : 2048 });
+    this.sketch = new SketchPipeline(this.renderer);
+    this.sketch.overlay = this.overlay;
+    this.buildGround();
 
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(container);
     this.resize();
   }
 
-  private buildEnvironment(): void {
-    const hemi = new THREE.HemisphereLight(0xfff6ea, 0xcdbba2, 1.55);
-    this.scene.add(hemi);
-
-    const sun = new THREE.DirectionalLight(0xffffff, 1.9);
-    sun.position.set(-6, 13, 8);
-    sun.castShadow = true;
-    // Smaller phones and low-core machines get a cheaper shadow map.
-    const modest = Math.max(screen.width, screen.height) <= 900 || (navigator.hardwareConcurrency ?? 8) <= 4;
-    const shadowSize = modest ? 1024 : 2048;
-    sun.shadow.mapSize.set(shadowSize, shadowSize);
-    const cam = sun.shadow.camera;
-    cam.left = -12;
-    cam.right = 12;
-    cam.top = 12;
-    cam.bottom = -12;
-    cam.near = 2;
-    cam.far = 40;
-    sun.shadow.bias = -0.0005;
-    sun.shadow.normalBias = 0.03;
-    sun.shadow.radius = 3;
-    this.scene.add(sun);
-
-    // Soft fill from the camera side so vertical faces never go flat grey.
-    const fill = new THREE.DirectionalLight(0xfff0e0, 0.85);
-    fill.position.set(4, 7, 14);
-    this.scene.add(fill);
-
-    // A soft disc to stand everything on, and a catcher for the shadows.
-    const size = 512;
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const g = ctx.createRadialGradient(size / 2, size / 2, size * 0.08, size / 2, size / 2, size / 2);
-      g.addColorStop(0, 'rgba(233, 225, 211, 1)');
-      g.addColorStop(0.55, 'rgba(236, 229, 217, 0.85)');
-      g.addColorStop(1, 'rgba(242, 237, 228, 0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, size, size);
-    }
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    const disc = new THREE.Mesh(
-      new THREE.CircleGeometry(19, 64).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false }),
-    );
-    disc.position.y = -1.2;
-    disc.renderOrder = -1;
-    this.scene.add(disc);
-
+  /** The shadows land on bare paper: a plane that shows nothing but the shadows, drawn in the lit pass only. */
+  private buildGround(): void {
     const catcher = new THREE.Mesh(
-      new THREE.PlaneGeometry(60, 60).rotateX(-Math.PI / 2),
-      new THREE.ShadowMaterial({ color: PALETTE.shadow, opacity: 0.2 }),
+      new THREE.PlaneGeometry(80, 80).rotateX(-Math.PI / 2),
+      new THREE.ShadowMaterial({ color: PALETTE.shadow, opacity: 0.5 }),
     );
-    catcher.position.y = -1.19;
+    catcher.position.y = GROUND_Y + 0.01;
     catcher.receiveShadow = true;
+    catcher.layers.set(MARK_LAYER);
     this.scene.add(catcher);
   }
 
@@ -132,8 +101,13 @@ export class Stage {
   private resize(): void {
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    // Hairlines are all the drawing is made of, so it wants the screen's full resolution; a modest device takes a coarser one.
+    const ratio = Math.min(window.devicePixelRatio || 1, this.ratioCap);
+    this.renderer.setPixelRatio(ratio);
     this.renderer.setSize(w, h, false);
+    this.sketch.setSize(w, h, ratio);
+    // On a small screen the pieces are small too, so the hatching gets finer with them.
+    this.sketch.setLook({ hatchGap: Math.min(5.6, Math.max(3.6, h / 170)) });
     this.rig.setSize(w, h);
     this.resizeHooks.forEach((hook) => hook(w, h));
   }
@@ -149,13 +123,35 @@ export class Stage {
     this.tweens.step(dt);
     this.rig.update(dt);
     this.hooks.forEach((hook) => hook(dt, this.time));
-    this.renderer.render(this.scene, this.rig.camera);
+    this.sketch.render(this.scene, this.rig.camera);
+    this.watchSpeed(now);
+  }
+
+  /**
+   * The drawing is done pixel by pixel, so a big, dense screen on a weak GPU can be too much. If frames stay slow
+   * for a couple of seconds, draw at fewer pixels (down to one per CSS pixel) rather than stutter.
+   */
+  private lastFrameAt = 0;
+  private watchSpeed(now: number): void {
+    const elapsed = now - this.lastFrameAt;
+    this.lastFrameAt = now;
+    // Skip the gaps of a hidden tab and the first frames, which are spent compiling shaders.
+    if (elapsed <= 0 || elapsed > 400 || this.time < 3) return;
+    this.frameMs += (elapsed - this.frameMs) * 0.08;
+    this.slowFrames = this.frameMs > 30 ? this.slowFrames + 1 : 0;
+    const ratio = Math.min(window.devicePixelRatio || 1, this.ratioCap);
+    if (this.slowFrames > 90 && ratio > 1) {
+      this.ratioCap = Math.max(1, ratio - 0.25);
+      this.slowFrames = 0;
+      this.resize();
+    }
   }
 
   dispose(): void {
     this.renderer.setAnimationLoop(null);
     this.observer.disconnect();
     this.tweens.flush();
+    this.sketch.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

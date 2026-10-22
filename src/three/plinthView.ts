@@ -3,27 +3,111 @@ import type { MatingPiece } from '../chess/puzzles';
 import { PALETTE } from '../theme';
 import { GROUND_Y, type LayoutKind, PLINTH_TOP, STAGE_ORDER, plinthPositions } from './layout';
 import type { PieceFactory } from './pieceMeshes';
+import { type Ring, chamferBox, turnFacet } from './pieces/toolkit';
+import { MARK_LAYER } from './sketch/pipeline';
 import { type Tweens, ease } from './tween';
 
 const TOKEN_SCALE = 1.35;
-const LOCK_Y = PLINTH_TOP + 0.62;
-const LOCK_SCALE = 0.82;
-/** Approximate model heights, used to place labels above the tokens. */
-const TOKEN_MODEL_HEIGHT: Record<MatingPiece, number> = { p: 0.95, n: 1.32, b: 1.42, r: 0.98, q: 1.62 };
+/** How firmly a locked piece is inked: it is only pencilled in until the section is unlocked. */
+const PENCIL = 0.36;
 
-const GHOST = new THREE.Color(0xa59b8c);
-const SOLID = new THREE.Color(0xffffff);
+/** Height of the lock on the plinth's column, and how far it hangs out from the axis. */
+const LOCK_Y = -0.42;
+const LOCK_Z = 0.99;
 
-/** One display stand: a plinth, the piece standing on it and the padlock in front of it. */
+/** The stand: a footing, a waisted column with a ring, and a cap with a groove for the piece to stand in. */
+const STAND: readonly Ring[] = [
+  [0, GROUND_Y],
+  [1.36, GROUND_Y],
+  [1.42, GROUND_Y + 0.07],
+  [1.42, GROUND_Y + 0.2],
+  [1.28, GROUND_Y + 0.3],
+  [1.18, GROUND_Y + 0.3],
+  [1.02, -0.78],
+  [0.95, -0.55],
+  [0.93, -0.34],
+  [1.05, -0.26, 0],
+  [1.05, -0.16, 0],
+  [0.95, -0.1, 0],
+  [1.16, 0.0, 0],
+  [1.16, 0.2, 0],
+  [1.08, PLINTH_TOP],
+  [0.86, PLINTH_TOP],
+  [0.84, PLINTH_TOP - 0.02],
+  [0.8, PLINTH_TOP - 0.02],
+  [0.78, PLINTH_TOP],
+  [0, PLINTH_TOP],
+];
+
+/** A padlock that hangs on the plinth: a hasp plate, a body with a keyhole and a shackle that can swing open. */
+function buildLock(): { group: THREE.Group; shackle: THREE.Group; disposables: Array<{ dispose(): void }> } {
+  const body = new THREE.MeshLambertMaterial({ color: 0xb4b4b4 });
+  const metal = new THREE.MeshLambertMaterial({ color: 0xdcdcdc });
+  const plate = new THREE.MeshLambertMaterial({ color: 0xcfcfcf });
+  const ink = new THREE.MeshLambertMaterial({ color: 0x050505 });
+
+  const plateGeo = chamferBox(0.78, 0.66, 0.05, 0.015);
+  const bodyGeo = chamferBox(0.5, 0.42, 0.2, 0.05);
+  const keyGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.03, 16).rotateX(Math.PI / 2);
+  const slotGeo = new THREE.BoxGeometry(0.035, 0.15, 0.03);
+  const arcGeo = new THREE.TorusGeometry(0.15, 0.04, 8, 22, Math.PI);
+  const legGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.16, 10);
+  const rivetGeo = new THREE.SphereGeometry(0.03, 10, 6);
+
+  const group = new THREE.Group();
+  const backing = new THREE.Mesh(plateGeo, plate);
+  backing.position.z = -0.1;
+  const lockBody = new THREE.Mesh(bodyGeo, body);
+  const key = new THREE.Mesh(keyGeo, ink);
+  key.position.set(0, 0.04, 0.105);
+  const slot = new THREE.Mesh(slotGeo, ink);
+  slot.position.set(0, -0.07, 0.105);
+  group.add(backing, lockBody, key, slot);
+  for (const [x, y] of [
+    [-0.3, 0.24],
+    [0.3, 0.24],
+    [-0.3, -0.24],
+    [0.3, -0.24],
+  ] as const) {
+    const rivet = new THREE.Mesh(rivetGeo, metal);
+    rivet.position.set(x, y, -0.07);
+    group.add(rivet);
+  }
+
+  const shackle = new THREE.Group();
+  const arc = new THREE.Mesh(arcGeo, metal);
+  const left = new THREE.Mesh(legGeo, metal);
+  left.position.set(-0.15, -0.08, 0);
+  const right = new THREE.Mesh(legGeo, metal);
+  right.position.set(0.15, -0.08, 0);
+  shackle.add(arc, left, right);
+  shackle.position.y = 0.21;
+  group.add(shackle);
+
+  group.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+  return {
+    group,
+    shackle,
+    disposables: [body, metal, plate, ink, plateGeo, bodyGeo, keyGeo, slotGeo, arcGeo, legGeo, rivetGeo],
+  };
+}
+
+/** One display stand: a plinth, the piece standing on it and the padlock hanging from its front. */
 export class PlinthView {
   readonly group = new THREE.Group();
   readonly piece: MatingPiece;
 
   private readonly parts: THREE.Mesh[] = [];
   private readonly tokenPivot = new THREE.Group();
-  private readonly tokenMaterial: THREE.MeshStandardMaterial;
+  private readonly tokenMaterial: THREE.MeshLambertMaterial;
+  private readonly tokenHeight: number;
   private readonly lock = new THREE.Group();
-  private readonly shackle: THREE.Mesh;
+  private readonly shackle: THREE.Group;
   private readonly ring: THREE.Mesh;
   private readonly ringMaterial: THREE.MeshBasicMaterial;
   private readonly disposables: Array<{ dispose(): void }> = [];
@@ -44,35 +128,32 @@ export class PlinthView {
     this.piece = piece;
     this.group.name = `plinth-${piece}`;
 
-    const stone = new THREE.MeshStandardMaterial({ color: PALETTE.plinth, flatShading: true, roughness: 0.92 });
-    const stoneDark = new THREE.MeshStandardMaterial({ color: PALETTE.plinthDark, flatShading: true, roughness: 0.92 });
-    const baseGeo = new THREE.CylinderGeometry(1.12, 1.26, 0.5, 8);
-    const columnGeo = new THREE.CylinderGeometry(0.8, 0.96, 0.8, 8);
-    const capGeo = new THREE.CylinderGeometry(1.06, 0.92, 0.2, 8);
-    const add = (geometry: THREE.BufferGeometry, material: THREE.Material, y: number): void => {
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.y = y;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.group.add(mesh);
-      this.parts.push(mesh);
-    };
-    add(baseGeo, stoneDark, GROUND_Y + 0.25);
-    add(columnGeo, stone, -0.3);
-    add(capGeo, stoneDark, 0.2);
-    this.disposables.push(stone, stoneDark, baseGeo, columnGeo, capGeo);
+    const stone = new THREE.MeshLambertMaterial({ color: PALETTE.plinth, flatShading: true });
+    const standGeo = turnFacet(STAND, 12);
+    const stand = new THREE.Mesh(standGeo, stone);
+    stand.castShadow = true;
+    stand.receiveShadow = true;
+    this.group.add(stand);
+    this.parts.push(stand);
+    this.disposables.push(stone, standGeo);
 
-    this.tokenMaterial = new THREE.MeshStandardMaterial({
+    // The piece is drawn with whatever ink the section has earned: its alpha is read by the sketch pass as pen pressure.
+    this.tokenMaterial = new THREE.MeshLambertMaterial({
       vertexColors: true,
-      flatShading: true,
-      roughness: 0.82,
       transparent: true,
-      opacity: 0.55,
-      color: GHOST,
+      opacity: PENCIL,
+      blending: THREE.CustomBlending,
+      blendEquation: THREE.AddEquation,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.ZeroFactor,
+      blendSrcAlpha: THREE.OneFactor,
+      blendDstAlpha: THREE.ZeroFactor,
       emissive: PALETTE.accent,
       emissiveIntensity: 0,
     });
-    const token = new THREE.Mesh(factory.geometry(piece, 'w'), this.tokenMaterial);
+    const geometry = factory.geometry(piece, 'w');
+    this.tokenHeight = (geometry.boundingBox?.max.y ?? 1.4) * TOKEN_SCALE;
+    const token = new THREE.Mesh(geometry, this.tokenMaterial);
     token.scale.setScalar(TOKEN_SCALE);
     token.receiveShadow = true;
     this.tokenPivot.position.y = PLINTH_TOP;
@@ -81,29 +162,17 @@ export class PlinthView {
     this.parts.push(token);
     this.disposables.push(this.tokenMaterial);
 
-    const lockBody = new THREE.MeshStandardMaterial({ color: PALETTE.boardRim, flatShading: true, roughness: 0.8 });
-    const lockMetal = new THREE.MeshStandardMaterial({ color: 0xcdbd9f, flatShading: true, roughness: 0.6 });
-    const lockDark = new THREE.MeshStandardMaterial({ color: PALETTE.ink, flatShading: true });
-    const bodyGeo = new THREE.BoxGeometry(0.66, 0.52, 0.32);
-    const shackleGeo = new THREE.TorusGeometry(0.2, 0.06, 5, 10, Math.PI);
-    const keyGeo = new THREE.CylinderGeometry(0.065, 0.065, 0.04, 6).rotateX(Math.PI / 2);
-    const slotGeo = new THREE.BoxGeometry(0.045, 0.15, 0.04);
-    const body = new THREE.Mesh(bodyGeo, lockBody);
-    this.shackle = new THREE.Mesh(shackleGeo, lockMetal);
-    this.shackle.position.y = 0.26;
-    const key = new THREE.Mesh(keyGeo, lockDark);
-    key.position.set(0, 0.05, 0.165);
-    const slot = new THREE.Mesh(slotGeo, lockDark);
-    slot.position.set(0, -0.06, 0.165);
-    this.lock.add(body, this.shackle, key, slot);
-    this.lock.position.set(0, LOCK_Y, 1.0);
-    this.lock.scale.setScalar(LOCK_SCALE);
-    for (const m of [body, this.shackle]) m.castShadow = true;
+    const built = buildLock();
+    this.lock.add(built.group);
+    this.shackle = built.shackle;
+    this.lock.position.set(0, LOCK_Y, LOCK_Z);
     this.group.add(this.lock);
-    this.parts.push(body, this.shackle);
-    this.disposables.push(lockBody, lockMetal, lockDark, bodyGeo, shackleGeo, keyGeo, slotGeo);
+    this.disposables.push(...built.disposables);
+    built.group.traverse((o) => {
+      if (o instanceof THREE.Mesh) this.parts.push(o);
+    });
 
-    const ringGeo = new THREE.RingGeometry(0.72, 0.92, 8).rotateX(-Math.PI / 2);
+    const ringGeo = new THREE.RingGeometry(0.66, 0.9, 48).rotateX(-Math.PI / 2);
     this.ringMaterial = new THREE.MeshBasicMaterial({
       color: PALETTE.accent,
       transparent: true,
@@ -112,6 +181,7 @@ export class PlinthView {
     });
     this.ring = new THREE.Mesh(ringGeo, this.ringMaterial);
     this.ring.position.y = PLINTH_TOP + 0.015;
+    this.ring.layers.set(MARK_LAYER);
     this.group.add(this.ring);
     this.disposables.push(ringGeo, this.ringMaterial);
 
@@ -123,6 +193,11 @@ export class PlinthView {
     return this.locked;
   }
 
+  /** Height of the token above the plinth top. */
+  get height(): number {
+    return this.tokenHeight;
+  }
+
   get pickables(): THREE.Mesh[] {
     return this.parts;
   }
@@ -130,12 +205,12 @@ export class PlinthView {
   /** World position just above the token, where the HTML label hangs. */
   get labelAnchor(): THREE.Vector3 {
     const p = this.group.position;
-    return new THREE.Vector3(p.x, PLINTH_TOP + TOKEN_MODEL_HEIGHT[this.piece] * TOKEN_SCALE + 0.55, p.z);
+    return new THREE.Vector3(p.x, PLINTH_TOP + this.tokenHeight + 0.5, p.z);
   }
 
   get tokenCenter(): THREE.Vector3 {
     const p = this.group.position;
-    return new THREE.Vector3(p.x, PLINTH_TOP + (TOKEN_MODEL_HEIGHT[this.piece] * TOKEN_SCALE) / 2, p.z);
+    return new THREE.Vector3(p.x, PLINTH_TOP + this.tokenHeight / 2, p.z);
   }
 
   placeAt(position: THREE.Vector3, facing: THREE.Vector3): void {
@@ -158,7 +233,7 @@ export class PlinthView {
     return this.tweens.run(1.1, (t) => this.apply(from + (to - from) * t), { ease: ease.inOutCubic });
   }
 
-  /** A short flash of accent colour on the token. */
+  /** A short flash of marker colour on the token. */
   flash(): Promise<void> {
     return this.tweens.run(
       1.1,
@@ -171,16 +246,15 @@ export class PlinthView {
 
   private apply(u: number): void {
     this.unlockAmount = u;
-    this.tokenMaterial.opacity = 0.55 + 0.45 * u;
-    this.tokenMaterial.color.lerpColors(GHOST, SOLID, u);
+    this.tokenMaterial.opacity = PENCIL + (1 - PENCIL) * u;
     this.tokenPivot.children.forEach((c) => (c.castShadow = u > 0.5));
 
     const open = Math.min(u / 0.3, 1);
     const drop = Math.max(0, Math.min((u - 0.3) / 0.7, 1));
     this.dropAmount = drop;
-    this.shackle.position.y = 0.26 + 0.14 * open;
-    this.shackle.rotation.z = -0.55 * open;
-    this.lock.scale.setScalar(Math.max(1 - drop, 0.001) * LOCK_SCALE);
+    this.shackle.position.y = 0.21 + 0.1 * open;
+    this.shackle.rotation.z = -0.5 * open;
+    this.lock.scale.setScalar(Math.max(1 - drop, 0.001));
     this.lock.rotation.y = drop * 2.4;
     this.lock.visible = u < 0.995;
   }
@@ -191,11 +265,11 @@ export class PlinthView {
     const bob = Math.sin(time * 1.6 + this.phase) * 0.06 * u;
     this.tokenPivot.position.y = PLINTH_TOP + bob + this.hoverAmount * 0.14;
     this.tokenPivot.rotation.y = u * time * 0.45;
-    this.tokenMaterial.emissiveIntensity = this.glow + this.hoverAmount * 0.12;
+    this.tokenMaterial.emissiveIntensity = this.glow + this.hoverAmount * 0.14;
 
     if (this.lock.visible) {
-      this.lock.rotation.z = Math.sin(time * 2 + this.phase) * 0.07 * (1 - u);
-      this.lock.position.y = LOCK_Y - this.dropAmount * 0.9 + Math.sin(time * 1.8 + this.phase) * 0.03 * (1 - u);
+      this.lock.rotation.z = Math.sin(time * 2 + this.phase) * 0.05 * (1 - u);
+      this.lock.position.y = LOCK_Y - this.dropAmount * 0.9 + Math.sin(time * 1.8 + this.phase) * 0.012 * (1 - u);
     }
     const pulse = 0.5 + 0.5 * Math.sin(time * 2.4 + this.phase);
     this.ringMaterial.opacity = u * (0.45 + 0.35 * pulse);
@@ -236,6 +310,13 @@ export class Plinths {
 
   get pickables(): THREE.Mesh[] {
     return [...this.views.values()].flatMap((v) => v.pickables);
+  }
+
+  /** How tall each token stands above its plinth. */
+  tokenHeights(): Record<MatingPiece, number> {
+    const out = {} as Record<MatingPiece, number>;
+    this.views.forEach((v, piece) => (out[piece] = v.height));
+    return out;
   }
 
   fromObject(object: THREE.Object3D | null): PlinthView | undefined {

@@ -16,9 +16,10 @@ import { BoardView } from './three/boardView';
 import { limitsAround } from './three/cameraRig';
 import { Effects } from './three/effects';
 import { InputController, type InputHost } from './three/input';
-import { fitPoints, focusPose, layoutKindFor } from './three/layout';
+import { type LayoutKind, fitPoints, focusPose, layoutKindFor } from './three/layout';
 import { PieceFactory } from './three/pieceMeshes';
 import { Plinths } from './three/plinthView';
+import { Guides } from './three/sketch/guides';
 import { Stage } from './three/stage';
 import { ease } from './three/tween';
 import { h } from './ui/dom';
@@ -37,6 +38,7 @@ export class App {
   private readonly factory = new PieceFactory();
   private readonly board: BoardView;
   private readonly plinths: Plinths;
+  private readonly guides = new Guides();
   private readonly effects: Effects;
   private readonly game: Game;
   private readonly eggs: EggEngine;
@@ -62,6 +64,8 @@ export class App {
   private idleFired = false;
   private unlockFlow = 0;
   private laidOut = { w: 0, h: 0 };
+  private guidesKind: LayoutKind | null = null;
+  private started = false;
 
   constructor(private readonly root: HTMLElement) {
     applyCssTheme();
@@ -79,6 +83,7 @@ export class App {
     this.plinths = new Plinths(this.factory, this.stage.tweens);
     this.effects = new Effects(this.stage);
     this.stage.scene.add(this.board.root, this.plinths.root);
+    this.stage.overlay.add(this.board.coordinates, this.guides.root);
 
     this.game = new Game(this.board, this.effects, this.stage);
     this.eggs = new EggEngine(this.progress, this.game);
@@ -155,6 +160,7 @@ export class App {
     this.stage.onResize(() => this.layout());
     this.stage.onFrame((dt, time) => {
       this.plinths.update(dt, time);
+      this.guides.update(dt);
       const { w, h: height } = this.stage.size;
       this.labels.update(this.stage.rig.camera, this.plinths, w, height);
     });
@@ -173,6 +179,7 @@ export class App {
       stage: this.stage,
       board: this.board,
       plinths: this.plinths,
+      effects: this.effects,
       eggs: this.eggs,
       openSection: (id: SectionId) => this.openSection(id),
     };
@@ -183,6 +190,8 @@ export class App {
     this.syncPlinths();
     this.refreshAll();
     this.stage.start();
+    this.started = true;
+    if (!this.stage.reducedMotion) this.guides.reveal();
     document.querySelector('#boot')?.classList.add('done');
 
     const rig = this.stage.rig;
@@ -210,6 +219,12 @@ export class App {
     const aspect = w / height;
     const kind = layoutKindFor(aspect);
     if (kind !== this.plinths.layoutKind) this.plinths.layout(kind);
+    if (kind !== this.guidesKind) {
+      this.guidesKind = kind;
+      this.guides.layout(kind, this.plinths.tokenHeights());
+      if (this.stage.reducedMotion) this.guides.complete();
+      else if (this.started) this.guides.reveal();
+    }
 
     const margins =
       kind === 'row' ? { side: 0.05, top: 0.2, bottom: 0.17 } : { side: 0.04, top: 0.22, bottom: 0.1 };

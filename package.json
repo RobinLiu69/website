@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Robin Liu's portfolio, played as a low-poly 3D chess board.",
+  "description": "Robin Liu's portfolio, played as a 3D chess board drawn in pen.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
