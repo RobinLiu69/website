@@ -35,14 +35,14 @@ export class Guides {
   private readonly material = new THREE.LineBasicMaterial({
     color: PALETTE.ink,
     transparent: true,
-    opacity: 0.42,
+    opacity: 0.5,
     depthTest: false,
     depthWrite: false,
   });
   private readonly faint = new THREE.LineBasicMaterial({
     color: PALETTE.ink,
     transparent: true,
-    opacity: 0.22,
+    opacity: 0.27,
     depthTest: false,
     depthWrite: false,
   });
