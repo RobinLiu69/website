@@ -3,17 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#F7F5F0" />
-    <title>Robin Liu · 3D 西洋棋作品集</title>
+    <meta name="theme-color" content="#0C0C0F" />
+    <title>Robin Liu</title>
     <meta
       name="description"
-      content="Robin Liu 的作品集,畫成一張鋼筆草圖的 3D 西洋棋:把棋子拖到定位、將殺對手,就能解鎖內容。A portfolio drawn as a pen sketch of a 3D chess board: checkmate to unlock."
+      content="一盤棋,藏著一些東西。 A chessboard, hiding something."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Robin Liu · 3D 西洋棋作品集" />
+    <meta property="og:title" content="Robin Liu" />
     <meta
       property="og:description"
-      content="把棋子拖到定位、將殺對手,就能解鎖內容。Checkmate to unlock."
+      content="一盤棋,藏著一些東西。 A chessboard, hiding something."
     />
     <!--social-image-->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -32,8 +32,8 @@
       body {
         margin: 0;
         height: 100%;
-        background: #f7f5f0;
-        color: #1d1d21;
+        background: #0c0c0f;
+        color: #ece8df;
         font-family: 'LXGW WenKai TC', 'Klee One', 'Kaiti TC', 'BiauKai', 'PingFang TC', 'Noto Sans TC',
           'Microsoft JhengHei', ui-rounded, system-ui, sans-serif;
       }
@@ -42,9 +42,9 @@
         inset: 0;
         display: grid;
         place-items: center;
-        font-size: 14px;
-        letter-spacing: 0.08em;
-        color: #5d5d63;
+        font-size: 22px;
+        letter-spacing: 0.5em;
+        color: #6f6c66;
         transition: opacity 0.4s ease;
       }
       #boot.done {
@@ -55,11 +55,11 @@
   </head>
   <body>
     <div id="app"></div>
-    <div id="boot" role="status">載入棋盤中… Loading board…</div>
+    <div id="boot" role="status" aria-label="Loading">· · ·</div>
     <noscript>
-      <p style="position: fixed; inset: 0; display: grid; place-items: center; margin: 0; padding: 24px; text-align: center; background: #f7f5f0">
-        這個網站是一盤 3D 西洋棋,需要啟用 JavaScript 與 WebGL。<br />
-        This site is a 3D chess board and needs JavaScript and WebGL.
+      <p style="position: fixed; inset: 0; display: grid; place-items: center; margin: 0; padding: 24px; text-align: center; background: #0c0c0f; color: #ece8df">
+        這裡有一盤棋,需要 JavaScript 與 WebGL 才看得到。<br />
+        There is a chessboard here. It needs JavaScript and WebGL.
       </p>
     </noscript>
     <script type="module" src="/src/main.ts"></script>

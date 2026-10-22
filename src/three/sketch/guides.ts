@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { PALETTE } from '../../theme';
-import { GROUND_Y, type LayoutKind, PLINTH_TOP, plinthPositions } from '../layout';
-import type { MatingPiece } from '../../chess/puzzles';
+import { BOARD_BOTTOM, BOARD_OUTER } from '../layout';
 
 /** A small deterministic generator, so the construction lines are the same on every visit and in every screenshot. */
 function mulberry32(seed: number): () => number {
@@ -22,10 +21,13 @@ interface Stroke {
   duration: number;
 }
 
+const FLOOR = BOARD_BOTTOM - 0.02;
+
 /**
- * The construction lines of a design drawing: axes through the stands, circles round their feet, the edges of
- * the board run on past its corners, a few crosses where lines were set out. Each is a wavering line of its
- * own, and they are drawn in one at a time when the page opens.
+ * The construction lines under a design drawing, laid out round the board: two wandering circles with a ring of
+ * tick marks, the board's edges and diagonals run on past its corners, an axis up through the middle, and a few
+ * crosses where something was set out. Each is a wavering line of its own, and they are drawn in one at a time
+ * when the page opens, circle first, as if the board were being summoned inside it.
  */
 export class Guides {
   readonly root = new THREE.Group();
@@ -36,71 +38,80 @@ export class Guides {
     color: PALETTE.ink,
     transparent: true,
     opacity: 0.5,
-    depthTest: false,
     depthWrite: false,
   });
   private readonly faint = new THREE.LineBasicMaterial({
     color: PALETTE.ink,
     transparent: true,
-    opacity: 0.27,
-    depthTest: false,
+    opacity: 0.26,
     depthWrite: false,
   });
 
   constructor() {
     this.root.name = 'guides';
+    this.build();
   }
 
-  /** Re-lays every line for the arrangement of stands. `heights` is the height of each token above its stand. */
-  layout(kind: LayoutKind, heights: Record<MatingPiece, number>): void {
-    for (const stroke of this.strokes) {
-      this.root.remove(stroke.line);
-      stroke.line.geometry.dispose();
-    }
-    this.strokes = [];
-    const random = mulberry32(kind === 'arc' ? 7 : 11);
-    const positions = plinthPositions(kind);
+  /** Sets every line out. Runs once; the lines do not depend on the screen. */
+  private build(): void {
+    const random = mulberry32(7);
+    const centre = new THREE.Vector3(0, FLOOR, 0);
 
-    // Axes through each token, with the levels of its foot and its top marked off.
-    for (const piece of Object.keys(positions) as MatingPiece[]) {
-      const at = positions[piece];
-      const top = PLINTH_TOP + heights[piece];
-      this.add(this.pen(new THREE.Vector3(at.x, GROUND_Y - 0.3, at.z), new THREE.Vector3(at.x, top + 0.8, at.z), random, 0.03), 0.1 + random() * 0.5);
-      for (const y of [PLINTH_TOP, top]) {
-        const half = 0.5 + random() * 0.3;
-        this.add(this.pen(new THREE.Vector3(at.x - half, y, at.z), new THREE.Vector3(at.x + half, y, at.z), random, 0.02), 0.4 + random() * 0.6, true);
-      }
-      // Two passes of a circle round the foot, the second a little larger and a little off.
-      for (const radius of [1.78, 1.86]) {
-        this.add(this.ring(new THREE.Vector3(at.x, GROUND_Y + 0.02, at.z), radius, random, 0.05), 0.6 + random() * 0.9, radius > 1.8);
-      }
-      this.add(this.cross(new THREE.Vector3(at.x + 1.5, GROUND_Y + 0.02, at.z + 1.5), 0.14, random), 1 + random(), false);
+    // Two circles, the second a little larger, a little off and a little fainter.
+    this.add(this.ring(centre, 8.3, random, 0.05, 1.03), 0, false);
+    this.add(this.ring(centre.clone().add(new THREE.Vector3(0.06, 0, -0.04)), 8.62, random, 0.07, 1.04), 0.5, true);
+    this.add(this.ring(centre, 11.8, random, 0.12, 0.7), 1.2, true);
+
+    // A ring of ticks between the circles: long every 45 degrees, short every 15, drawn as one loose scribble each.
+    for (let k = 0; k < 24; k++) {
+      const a = (k / 24) * Math.PI * 2 + (random() - 0.5) * 0.01;
+      const long = k % 6 === 0;
+      const inner = 8.3 + 0.02;
+      const outer = 8.62 - (long ? -0.55 : 0.05);
+      this.add(
+        this.pen(
+          new THREE.Vector3(Math.cos(a) * inner, FLOOR, Math.sin(a) * inner),
+          new THREE.Vector3(Math.cos(a) * outer, FLOOR, Math.sin(a) * outer),
+          random,
+          0.01,
+        ),
+        0.9 + (k / 24) * 1.1,
+        !long,
+      );
     }
 
-    // The board's edges, run on past its corners.
-    const rim = 4.4;
-    const over = 1.7;
+    // The board's edges and diagonals, run on past its corners.
+    const e = BOARD_OUTER;
+    const over = () => 1.6 + random() * 1.8;
     for (const s of [-1, 1]) {
-      this.add(this.pen(new THREE.Vector3(-rim - over * (0.6 + random() * 0.7), 0.1, s * rim), new THREE.Vector3(rim + over * (0.6 + random() * 0.7), 0.1, s * rim), random, 0.03), random() * 0.6, true);
-      this.add(this.pen(new THREE.Vector3(s * rim, 0.1, -rim - over * (0.6 + random() * 0.7)), new THREE.Vector3(s * rim, 0.1, rim + over * (0.6 + random() * 0.7)), random, 0.03), random() * 0.6, true);
+      this.add(this.pen(new THREE.Vector3(-e - over(), FLOOR, s * e), new THREE.Vector3(e + over(), FLOOR, s * e), random, 0.04), 0.4 + random() * 0.4, true);
+      this.add(this.pen(new THREE.Vector3(s * e, FLOOR, -e - over()), new THREE.Vector3(s * e, FLOOR, e + over()), random, 0.04), 0.5 + random() * 0.4, true);
     }
-    // The board's own axis and its centre lines.
-    this.add(this.pen(new THREE.Vector3(0, GROUND_Y - 0.4, 0), new THREE.Vector3(0, 3.6, 0), random, 0.03), 0.2, true);
-    this.add(this.pen(new THREE.Vector3(-9.5, GROUND_Y + 0.02, 0), new THREE.Vector3(9.5, GROUND_Y + 0.02, 0), random, 0.05), 0.5, true);
-    this.add(this.pen(new THREE.Vector3(0, GROUND_Y + 0.02, -10.5), new THREE.Vector3(0, GROUND_Y + 0.02, 6.5), random, 0.05), 0.7, true);
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const far = e + 3.2 + random() * 1.5;
+        this.add(this.pen(new THREE.Vector3(sx * (e - 0.3), FLOOR, sz * (e - 0.3)), new THREE.Vector3(sx * far, FLOOR, sz * far), random, 0.04), 1.3 + random() * 0.5, true);
+      }
+    }
 
-    // A loose circle round the whole drawing, and crosses where things were set out.
-    this.add(this.ring(new THREE.Vector3(0, GROUND_Y + 0.02, -1.2), 12.4, random, 0.12, 0.75), 1.2, true);
+    // The board's own axes, on the floor and up through the middle.
+    this.add(this.pen(new THREE.Vector3(-11.2, FLOOR, 0), new THREE.Vector3(11.2, FLOOR, 0), random, 0.05), 0.8, true);
+    this.add(this.pen(new THREE.Vector3(0, FLOOR, -11.2), new THREE.Vector3(0, FLOOR, 11.2), random, 0.05), 1.0, true);
+    this.add(this.pen(new THREE.Vector3(0, FLOOR, 0), new THREE.Vector3(0, 4.4, 0), random, 0.03), 1.6, true);
+    this.add(this.pen(new THREE.Vector3(-1.4, 4.0, 0), new THREE.Vector3(1.4, 4.0, 0), random, 0.02), 2.0, true);
+
+    // Crosses where something was set out.
     for (const [x, z] of [
-      [-6.4, 6.2],
-      [6.8, 5.6],
-      [-10.8, -4.6],
-      [10.2, -5.2],
-      [0.6, 8.4],
+      [-6.4, 5.8],
+      [6.9, 5.1],
+      [-9.8, -3.4],
+      [9.4, -4.6],
+      [0.8, 9.4],
+      [-3.6, -9.2],
+      [4.4, -8.8],
     ] as const) {
-      this.add(this.cross(new THREE.Vector3(x, GROUND_Y + 0.02, z), 0.2, random), 1.2 + random() * 0.8, false);
+      this.add(this.cross(new THREE.Vector3(x, FLOOR, z), 0.22, random), 1.4 + random() * 1.2, false);
     }
-    this.clock = Infinity;
     this.apply();
   }
 
@@ -132,13 +143,13 @@ export class Guides {
     }
   }
 
-  private add(points: THREE.Vector3[], delay: number, faint = false): void {
+  private add(points: THREE.Vector3[], delay: number, faint: boolean): void {
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const line = new THREE.Line(geometry, faint ? this.faint : this.material);
     line.frustumCulled = false;
     line.renderOrder = 10;
     this.root.add(line);
-    this.strokes.push({ line, vertices: points.length, delay, duration: 0.5 + Math.min(1.1, points.length * 0.03) });
+    this.strokes.push({ line, vertices: points.length, delay, duration: 0.5 + Math.min(1.6, points.length * 0.025) });
   }
 
   /** A straight stroke that wanders a little, and overshoots at both ends. */
@@ -158,7 +169,7 @@ export class Guides {
     });
   }
 
-  /** A circle on the ground that does not quite close, or runs a little past where it began. */
+  /** A circle on the floor that does not quite close, or runs a little past where it began. */
   private ring(centre: THREE.Vector3, radius: number, random: () => number, wobble: number, turns = 1.04): THREE.Vector3[] {
     const steps = Math.max(24, Math.round(radius * 9 * turns));
     const start = random() * Math.PI * 2;

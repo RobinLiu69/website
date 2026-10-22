@@ -7,12 +7,12 @@ import { SketchPipeline } from './three/sketch/pipeline';
 
 /**
  * A bench for looking at the piece models up close: both colours in a row under the same
- * light and the same pen as the site, with a camera that can be moved from outside (see window.__lab).
- * Query: ?gap=1.5 spacing, ?scale=0.92 piece scale.
+ * light and the same chalk as the site, with a camera that can be moved from outside (see window.__lab).
+ * Query: ?gap=1.5 spacing, ?scale=1 piece scale.
  */
 const params = new URLSearchParams(location.search);
 const gap = Number(params.get('gap') ?? 1.5);
-const scale = Number(params.get('scale') ?? 0.92);
+const scale = Number(params.get('scale') ?? 1);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 const pixelRatio = Math.min(window.devicePixelRatio, 2);

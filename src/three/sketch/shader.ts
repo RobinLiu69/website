@@ -1,12 +1,11 @@
 /**
- * The pen-and-ink pass. It reads the lit scene (only its brightness matters), a buffer of
- * view-space normals and the depth of the same frame, and draws them again as a drawing on
- * paper: outlines wherever depth or surface direction jumps, hatching where the scene is
- * dark, a little wobble everywhere so no line is machine straight.
+ * The chalk pass. It reads the lit scene (only its brightness matters), a buffer of view-space normals and the
+ * depth of the same frame, and draws them again as a chalk drawing on a dark sheet: outlines wherever depth or
+ * surface direction jumps, hatching where the scene is bright, a little wobble everywhere so no line is machine
+ * straight.
  *
  * Conventions for what the scene writes into the lit buffer:
- *  - brightness is how much ink is wanted (white = bare paper);
- *  - alpha is how firmly the object is inked (1 = pen, less = pencil);
+ *  - brightness is how much chalk is wanted (black = bare sheet);
  *  - colour is the marker: anything with chroma is tinted with the accent colour.
  */
 
@@ -29,14 +28,19 @@ uniform float uUnit;     // one CSS pixel, in device pixels
 uniform float uNear;
 uniform float uFar;
 uniform float uSeed;
-uniform vec3 uPaper;
-uniform vec3 uInk;
+uniform vec3 uPaper;     // the dark sheet
+uniform vec3 uPaperLit;  // the sheet inside the lamp's pool of light
+uniform vec3 uChalk;
 uniform vec3 uAccent;
-uniform vec4 uTone;      // ink wanted (0..1) at which the 1st, 2nd, 3rd and 4th direction of hatching begin
-uniform float uSolid;    // ink wanted at which the pen stops hatching and fills in
+uniform vec4 uTone;      // brightness at which the 1st, 2nd, 3rd and 4th direction of hatching begin
+uniform float uSolid;    // brightness at which the chalk stops hatching and fills in
 uniform float uHatchGap; // CSS px between hatch lines
 uniform float uLine;     // outline half width in CSS px
-uniform float uCrease;   // how firmly the pen draws the edges between facets (silhouettes are always drawn firmly)
+uniform float uCrease;   // how firmly the edges between facets are drawn (silhouettes are always firm)
+uniform vec2 uCenter;    // where the lamp is, in NDC
+uniform float uReveal;   // 0..1: how much of the drawing has been drawn in
+uniform float uExposure; // 0..1: overall chalk strength, so the picture can recede while something else is read
+uniform float uDebug;    // 1: show the brightness the scene was lit with, to tune it
 varying vec2 vUv;
 
 float hash21(vec2 p) {
@@ -79,7 +83,7 @@ vec2 edgeAt(vec2 coord, float radius) {
   vec3 nC = SAMPLE(tNormal, uv).xyz * 2.0 - 1.0;
   float zC = linearDepth(dC);
   // Facet edges thin out with distance: on small, far objects they would only be noise.
-  float farFade = 1.0 - 0.55 * smoothstep(14.0, 30.0, zC);
+  float farFade = 1.0 - 0.5 * smoothstep(22.0, 40.0, zC);
   vec2 e = vec2(0.0);
   for (int i = 0; i < 4; i++) {
     vec2 o = i == 0 ? vec2(radius, 0.0) : i == 1 ? vec2(-radius, 0.0) : i == 2 ? vec2(0.0, radius) : vec2(0.0, -radius);
@@ -96,8 +100,8 @@ vec2 edgeAt(vec2 coord, float radius) {
   return e;
 }
 
-// Parallel pen strokes, broken into short runs. Where the picture is darker, more of the strokes are there:
-// each run has its own mind about how dark is dark enough, so the hatching thickens stroke by stroke
+// Parallel strokes, broken into short runs. Where the picture is brighter, more of the strokes are there:
+// each run has its own mind about how bright is bright enough, so the hatching thickens stroke by stroke
 // instead of fading in. The strokes are a little off line and a little different in weight.
 float strokes(vec2 p, float angle, float gap, float pen, float seed, float tone, float start) {
   float c = cos(angle);
@@ -125,35 +129,34 @@ void main() {
   vec2 fc = vUv * uRes;
   vec4 beauty = SAMPLE(tBeauty, vUv);
 
-  // Pencil objects carry alpha < 1; take the weakest nearby value so outlines follow the object they belong to.
-  vec2 px = 1.0 / uRes;
-  float weight = min(
-    min(beauty.a, SAMPLE(tBeauty, vUv + vec2(2.0 * unit, 0.0) * px).a),
-    min(SAMPLE(tBeauty, vUv - vec2(2.0 * unit, 0.0) * px).a, min(
-      SAMPLE(tBeauty, vUv + vec2(0.0, 2.0 * unit) * px).a,
-      SAMPLE(tBeauty, vUv - vec2(0.0, 2.0 * unit) * px).a))
-  );
-
   float lum = pow(clamp(dot(beauty.rgb, vec3(0.299, 0.587, 0.114)), 0.0, 1.0), 0.4545);
-  float tone = 1.0 - lum;
+  if (uDebug > 0.5) {
+    gl_FragColor = vec4(vec3(lum), 1.0);
+    return;
+  }
+  float tone = lum;
 
-  // Hatching: each darker band of the picture adds another direction of strokes.
+  // Hatching: each brighter band of the picture adds another direction of strokes.
   float gap = uHatchGap * unit;
   float pen = 0.5 * unit;
-  float dense = 0.8 + 0.5 * smoothstep(0.3, 0.9, tone);
-  // Bare paper needs no strokes at all, and each direction only starts once the picture is dark enough for it.
+  float dense = 0.8 + 0.5 * smoothstep(0.4, 0.95, tone);
+  // Bare sheet needs no strokes at all, and each direction only starts once the picture is bright enough for it.
+  // Surfaces that face up (the board) are hatched along the floor, the rest (the pieces) steeply, so the two never merge.
+  float up = smoothstep(0.5, 0.62, SAMPLE(tNormal, vUv).y * 2.0 - 1.0);
+  float a1 = mix(1.12, 0.3, up);
+  float a2 = mix(-0.5, 1.9, up);
   float hatch = 0.0;
   if (tone > uTone.x) {
-    hatch = strokes(fc, 1.12, gap, pen * dense, 1.0, tone, uTone.x);
+    hatch = strokes(fc, a1, gap, pen * dense, 1.0, tone, uTone.x);
     if (tone > uTone.y) {
-      hatch = max(hatch, strokes(fc, -0.5, gap, pen * dense, 2.0, tone, uTone.y));
+      hatch = max(hatch, strokes(fc, a2, gap, pen * dense, 2.0, tone, uTone.y));
       if (tone > uTone.z) {
         hatch = max(hatch, strokes(fc, 1.62, gap * 0.85, pen * dense, 3.0, tone, uTone.z));
         if (tone > uTone.w) hatch = max(hatch, strokes(fc, 0.3, gap * 0.62, pen * dense, 4.0, tone, uTone.w));
       }
     }
   }
-  hatch = max(hatch, smoothstep(uSolid, uSolid + 0.04, tone));
+  hatch = max(hatch, smoothstep(uSolid, uSolid + 0.03, tone));
 
   // Outlines: drawn twice, the second time lighter and a little off, the way a hand re-states a line.
   float r = max(uLine * unit, 0.5);
@@ -165,20 +168,33 @@ void main() {
   float facets = max(first.y * pressure, second.y * 0.4) * uCrease;
   float outline = max(firm, facets);
 
-  float ink = clamp(max(hatch * 0.9, outline), 0.0, 1.0) * weight;
+  float ink = clamp(max(hatch * 0.85, outline), 0.0, 1.0);
 
-  float grain = hash21(floor(fc / max(unit, 1.0)));
-  vec3 paper = uPaper * (0.982 + 0.026 * grain);
-  vec2 centred = (vUv - 0.5) * vec2(uRes.x / uRes.y, 1.0);
-  paper *= 1.0 - 0.07 * smoothstep(0.45, 1.25, length(centred));
+  // Chalk is grainy.
+  ink *= 0.68 + 0.32 * hash21(floor(fc / max(unit, 1.0)) + uSeed * 3.1);
 
-  vec3 colour = mix(paper, uInk, ink);
+  // The lamp: the sheet is lightest, and the chalk strongest, where it shines.
+  float aspect = uRes.x / uRes.y;
+  vec2 centred = (vUv - (0.5 + 0.5 * uCenter)) * vec2(aspect, 1.0);
+  float lamp = 1.0 - smoothstep(0.22, 1.0, length(centred * vec2(1.0, 1.12)));
+  ink *= mix(0.3, 1.0, lamp);
 
-  // The marker: whatever the scene painted with colour is laid over the drawing as a translucent wash.
+  // Being drawn in, from the middle outward.
+  float n = vnoise(fc / (52.0 * unit) + 3.0) * 0.4 + vnoise(fc / (15.0 * unit)) * 0.12;
+  ink *= smoothstep(0.0, 0.1, uReveal * 1.5 - length(centred) - n);
+  ink *= uExposure;
+
+  vec3 paper = mix(uPaper, uPaperLit, lamp * lamp) * (0.94 + 0.12 * hash21(floor(fc / max(unit, 1.0))));
+
+  // The marker: whatever the scene painted with colour is drawn in the accent, and washes the sheet a little.
   float chroma = max(max(beauty.r, beauty.g), beauty.b) - min(min(beauty.r, beauty.g), beauty.b);
-  float marker = smoothstep(0.04, 0.24, chroma);
-  colour *= mix(vec3(1.0), uAccent, marker);
+  float marker = smoothstep(0.04, 0.5, chroma);
+
+  vec3 colour = mix(paper, mix(uChalk, uAccent, marker), ink);
+  colour = mix(colour, uAccent, marker * 0.38 * uExposure);
 
   gl_FragColor = vec4(colour, 1.0);
+  // Leave the scene's depth behind, so lines drawn afterwards can pass behind the board and the pieces.
+  gl_FragDepth = SAMPLE(tDepth, vUv).x;
 }
 `;

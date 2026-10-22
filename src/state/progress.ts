@@ -1,4 +1,5 @@
 import type { MatingPiece } from '../chess/puzzles';
+import { EGGS } from '../game/eggDefs';
 import { Emitter } from '../game/events';
 import type { Lang } from '../i18n';
 
@@ -31,7 +32,9 @@ export class Progress extends Emitter<{ change: undefined }> {
     super();
     const saved = read();
     this.unlocked = new Set(saved.unlocked ?? []);
-    this.eggs = new Set(saved.eggs ?? []);
+    // An egg that has since been renamed or removed must not count towards the total.
+    const known = new Set<string>(EGGS.map((egg) => egg.id));
+    this.eggs = new Set((saved.eggs ?? []).filter((id) => known.has(id)));
     this.lang = saved.lang === 'en' || saved.lang === 'zh-TW' ? saved.lang : defaultLang;
     this.sound = saved.sound === true;
   }

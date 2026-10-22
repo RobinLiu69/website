@@ -1,10 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#F7F5F0"/>
-  <!-- low-poly pawn: faceted head, collar, stem, base -->
-  <polygon points="32,10 41,15 41,25 32,30 23,25 23,15" fill="#E2704A"/>
-  <polygon points="32,10 41,15 32,19 23,15" fill="#EE8E6C"/>
-  <polygon points="32,19 41,15 41,25 32,30" fill="#C85A37"/>
-  <polygon points="22,31 42,31 39,36 25,36" fill="#3A3532"/>
-  <polygon points="26,36 38,36 40,47 24,47" fill="#4A4440"/>
-  <polygon points="19,47 45,47 48,54 16,54" fill="#3A3532"/>
+  <rect width="64" height="64" rx="14" fill="#0C0C0F"/>
+  <!-- a chalk knight's head: faceted outline with an ember eye -->
+  <g fill="none" stroke="#ECE8DF" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M21 50 L22 40 L19 33 L24 22 L30 14 L31 10 L35 15 L43 17 L51 28 L47 32 L41 30 L37 33 L41 41 L42 50 Z"/>
+    <path d="M24 22 L33 24 L37 33" opacity="0.55"/>
+    <path d="M28 50 L28 44 M35 50 L35 44" opacity="0.45"/>
+  </g>
+  <path d="M19 52 H45" stroke="#ECE8DF" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="36" cy="22" r="2" fill="#F0904F"/>
 </svg>

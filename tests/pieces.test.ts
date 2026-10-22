@@ -102,10 +102,43 @@ describe('piece models', () => {
   it('keeps the usual order of heights: pawn, rook, knight, bishop, queen, king', () => {
     const h = (type: PieceType): number => box(type).max.y;
     expect(h('p')).toBeLessThan(h('r'));
-    expect(h('r')).toBeLessThan(h('b'));
+    expect(h('r')).toBeLessThan(h('n'));
     expect(h('n')).toBeLessThan(h('b'));
     expect(h('b')).toBeLessThan(h('q'));
     expect(h('q')).toBeLessThan(h('k'));
+  });
+
+  it('follows real Staunton proportions (a tournament king is about 1.7 squares tall)', () => {
+    const h = (type: PieceType): number => box(type).max.y;
+    const king = h('k');
+    expect(king).toBeGreaterThan(1.6);
+    expect(king).toBeLessThan(1.95);
+    // heights as a share of the king's, the way real sets are cut
+    const share: Record<Exclude<PieceType, 'k'>, [number, number]> = {
+      q: [0.83, 0.93],
+      b: [0.74, 0.86],
+      n: [0.68, 0.8],
+      r: [0.58, 0.68],
+      p: [0.48, 0.6],
+    };
+    for (const [type, [lo, hi]] of Object.entries(share) as Array<[Exclude<PieceType, 'k'>, [number, number]]>) {
+      expect(h(type) / king).toBeGreaterThan(lo);
+      expect(h(type) / king).toBeLessThan(hi);
+    }
+  });
+
+  it('gives the king a base about two fifths of its height, and the others slimmer or equal bases', () => {
+    const baseRadius = (type: PieceType): number => {
+      const position = factory.geometry(type, 'w').getAttribute('position');
+      let r = 0;
+      for (let i = 0; i < position.count; i++) if (position.getY(i) < 0.12) r = Math.max(r, Math.hypot(position.getX(i), position.getZ(i)));
+      return r;
+    };
+    const kingBase = (2 * baseRadius('k')) / box('k').max.y;
+    expect(kingBase).toBeGreaterThan(0.36);
+    expect(kingBase).toBeLessThan(0.48);
+    for (const type of TYPES) expect(baseRadius(type)).toBeLessThanOrEqual(baseRadius('k') + 1e-6);
+    expect(baseRadius('p')).toBeLessThan(baseRadius('r'));
   });
 
   it('fits a square: the foot of every piece stays well inside one', () => {
@@ -116,7 +149,8 @@ describe('piece models', () => {
       for (let i = 0; i < position.count; i++) {
         if (position.getY(i) < 0.3) foot = Math.max(foot, Math.hypot(position.getX(i), position.getZ(i)));
       }
-      expect(foot).toBeLessThan(0.46);
+      // a square is 1 wide; the king's base is a little under three quarters of it
+      expect(foot).toBeLessThan(0.4);
     }
   });
 

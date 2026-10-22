@@ -2,8 +2,7 @@ import * as THREE from 'three';
 import { PALETTE } from '../theme';
 import { CameraRig } from './cameraRig';
 import { addLighting } from './lighting';
-import { MARK_LAYER, SketchPipeline } from './sketch/pipeline';
-import { GROUND_Y } from './layout';
+import { SketchPipeline } from './sketch/pipeline';
 import { Tweens } from './tween';
 
 export class WebGLUnavailableError extends Error {
@@ -37,6 +36,7 @@ export class Stage {
   private ratioCap: number;
   private frameMs = 16;
   private slowFrames = 0;
+  private readonly lamp = new THREE.Vector2();
   private last = 0;
   private time = 0;
 
@@ -65,23 +65,10 @@ export class Stage {
     addLighting(this.scene, { shadowSize: this.modest ? 1024 : 2048 });
     this.sketch = new SketchPipeline(this.renderer);
     this.sketch.overlay = this.overlay;
-    this.buildGround();
 
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(container);
     this.resize();
-  }
-
-  /** The shadows land on bare paper: a plane that shows nothing but the shadows, drawn in the lit pass only. */
-  private buildGround(): void {
-    const catcher = new THREE.Mesh(
-      new THREE.PlaneGeometry(80, 80).rotateX(-Math.PI / 2),
-      new THREE.ShadowMaterial({ color: PALETTE.shadow, opacity: 0.5 }),
-    );
-    catcher.position.y = GROUND_Y + 0.01;
-    catcher.receiveShadow = true;
-    catcher.layers.set(MARK_LAYER);
-    this.scene.add(catcher);
   }
 
   onFrame(hook: FrameHook): () => void {
@@ -107,7 +94,7 @@ export class Stage {
     this.renderer.setSize(w, h, false);
     this.sketch.setSize(w, h, ratio);
     // On a small screen the pieces are small too, so the hatching gets finer with them.
-    this.sketch.setLook({ hatchGap: Math.min(5.6, Math.max(3.6, h / 170)) });
+    this.sketch.setLook({ hatchGap: Math.min(4.8, Math.max(3.4, h / 190)) });
     this.rig.setSize(w, h);
     this.resizeHooks.forEach((hook) => hook(w, h));
   }
@@ -123,6 +110,9 @@ export class Stage {
     this.tweens.step(dt);
     this.rig.update(dt);
     this.hooks.forEach((hook) => hook(dt, this.time));
+    // The lamp leans a little toward the pointer, as if it were held in a hand.
+    this.lamp.lerp(this.rig.parallaxTarget, 1 - Math.exp(-dt * 1.6));
+    this.sketch.setLampOffset(this.lamp.x * 0.22, this.lamp.y * 0.22);
     this.sketch.render(this.scene, this.rig.camera);
     this.watchSpeed(now);
   }

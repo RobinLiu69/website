@@ -12,14 +12,14 @@ export interface Lighting {
 /**
  * The lights shared by the site and the piece lab. They are plain white on purpose: the sketch pass reads
  * the lit picture as brightness only (any colour in it is taken to be marker), so the light is what decides
- * where the hatching goes, and the cast shadows become hatched patches on the paper.
+ * where the chalk goes: the lit side of everything is drawn, and cast shadows are left as bare sheet.
  */
 export function addLighting(scene: THREE.Scene, options: LightingOptions = {}): Lighting {
   const { shadowSize = 2048 } = options;
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xb4b4b4, 1.6));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x6a6a6a, 0.45));
 
-  const sun = new THREE.DirectionalLight(0xffffff, 3.4);
+  const sun = new THREE.DirectionalLight(0xffffff, 2.5);
   sun.position.set(-7, 11, 6);
   sun.castShadow = true;
   sun.shadow.mapSize.set(shadowSize, shadowSize);
@@ -36,7 +36,7 @@ export function addLighting(scene: THREE.Scene, options: LightingOptions = {}): 
   scene.add(sun);
 
   // A weak light from the viewer's side, so faces turned away from the sun are shaded rather than black.
-  const fill = new THREE.DirectionalLight(0xffffff, 0.6);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.22);
   fill.position.set(5, 6, 14);
   scene.add(fill);
 

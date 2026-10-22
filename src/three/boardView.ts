@@ -11,6 +11,7 @@ import {
 } from '../chess/types';
 import { PALETTE } from '../theme';
 import type { PieceFactory } from './pieceMeshes';
+import { BOARD_BOTTOM, BOARD_OUTER } from './layout';
 import { chamferBox } from './pieces/toolkit';
 import { MARK_LAYER } from './sketch/pipeline';
 import { type Tweens, ease } from './tween';
@@ -26,8 +27,11 @@ export function squareAt(x: number, z: number): Square | null {
   return inBounds(file, rank) ? toSquare(file, rank) : null;
 }
 
-/** Pieces are drawn a little under a square's width so neighbours do not crowd each other. */
-const PIECE_SCALE = 0.92;
+/** The frame round the playing area, in squares. */
+const FRAME = 0.55;
+
+/** Pieces are modelled at real-world size against the squares, so they are drawn as they are. */
+const PIECE_SCALE = 1;
 
 /**
  * Knights stand in profile, looking toward the middle of the board, so the
@@ -113,8 +117,8 @@ export class BoardView {
     this.disposables.push(fill, frame);
 
     const hoverMaterial = overlay(PALETTE.accent, 0.5);
-    const selectMaterial = overlay(PALETTE.accentDeep, 0.95);
-    const checkMaterial = overlay(PALETTE.accentDeep, 0.9);
+    const selectMaterial = overlay(PALETTE.accent, 0.95);
+    const checkMaterial = overlay(PALETTE.accent, 0.9);
     this.disposables.push(hoverMaterial, selectMaterial, checkMaterial);
 
     this.hoverMark = new THREE.Mesh(fill, hoverMaterial);
@@ -139,7 +143,7 @@ export class BoardView {
 
   private buildBoard(): void {
     // Each square is a chamfered tile with a hairline gap around it, so the pen finds a line between every pair.
-    const tileGeo = chamferBox(0.985, 0.985, 0.2, 0.006).rotateX(-Math.PI / 2).translate(0, -0.1, 0);
+    const tileGeo = chamferBox(0.985, 0.985, 0.14, 0.006).rotateX(-Math.PI / 2).translate(0, -0.07, 0);
     const lightMat = new THREE.MeshLambertMaterial({ color: PALETTE.boardLight });
     const darkMat = new THREE.MeshLambertMaterial({ color: PALETTE.boardDark });
     const light = new THREE.InstancedMesh(tileGeo, lightMat, 32);
@@ -161,44 +165,54 @@ export class BoardView {
       this.root.add(mesh);
     }
 
-    const rimMat = new THREE.MeshLambertMaterial({ color: PALETTE.boardRim });
-    const rimParts: Array<[number, number, number, number]> = [
-      // width, depth, x, z
-      [8.8, 0.4, 0, -4.2],
-      [8.8, 0.4, 0, 4.2],
-      [0.4, 8.0, -4.2, 0],
-      [0.4, 8.0, 4.2, 0],
+    // The frame: a border half a square wide, a hair higher than the tiles.
+    const frameMat = new THREE.MeshLambertMaterial({ color: PALETTE.boardRim });
+    const border = FRAME;
+    const mid = 4 + border / 2;
+    const frameParts: Array<[number, number, number, number]> = [
+      // width (x), depth (z), x, z
+      [8 + 2 * border, border, 0, -mid],
+      [8 + 2 * border, border, 0, mid],
+      [border, 8, -mid, 0],
+      [border, 8, mid, 0],
     ];
-    const rimGeos = rimParts.map(([w, d, x, z]) => {
-      const geometry = chamferBox(w, d, 0.28, 0.03).rotateX(-Math.PI / 2);
-      const mesh = new THREE.Mesh(geometry, rimMat);
-      mesh.position.set(x, -0.06, z);
+    const frameGeos = frameParts.map(([w, d, x, z]) => {
+      const geometry = chamferBox(w, d, 0.3, 0.035).rotateX(-Math.PI / 2);
+      const mesh = new THREE.Mesh(geometry, frameMat);
+      mesh.position.set(x, -0.11, z);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       this.root.add(mesh);
       return geometry;
     });
 
-    // A tapered slab underneath, so the board reads as a floating tray.
-    const baseGeo = new THREE.CylinderGeometry(6.5, 5.4, 0.55, 4, 1).rotateY(Math.PI / 4);
+    // A slab underneath that overhangs the frame a little.
+    const baseGeo = chamferBox(2 * BOARD_OUTER, 2 * BOARD_OUTER, 0.24, 0.045).rotateX(-Math.PI / 2);
     const baseMat = new THREE.MeshLambertMaterial({ color: PALETTE.boardBase });
     const base = new THREE.Mesh(baseGeo, baseMat);
-    base.position.y = -0.475;
+    base.position.y = BOARD_BOTTOM + 0.12;
     base.castShadow = true;
     base.receiveShadow = true;
     this.root.add(base);
 
-    this.disposables.push(tileGeo, lightMat, darkMat, rimMat, baseGeo, baseMat, ...rimGeos);
+    this.disposables.push(tileGeo, lightMat, darkMat, frameMat, baseGeo, baseMat, ...frameGeos);
   }
 
   /**
-   * a-h along the front rim and 1-8 down the left one, as seen from white's side. They are written in pen
+   * a-h along the front rim and 1-8 down the left one, as seen from white's side. They are written in chalk
    * over the finished drawing (see Stage.overlay), so they are not part of `root`.
    */
   readonly coordinates = new THREE.Group();
+  private readonly coordinateMaterials: THREE.MeshBasicMaterial[] = [];
+
+  /** 0..1: how much of the chalk lettering shows. */
+  setCoordinateOpacity(amount: number): void {
+    for (const material of this.coordinateMaterials) material.opacity = 0.5 * amount;
+    this.coordinates.visible = amount > 0.01;
+  }
 
   private buildCoordinates(): void {
-    const geometry = new THREE.PlaneGeometry(0.4, 0.4).rotateX(-Math.PI / 2);
+    const geometry = new THREE.PlaneGeometry(0.36, 0.36).rotateX(-Math.PI / 2);
     this.disposables.push(geometry);
     const add = (text: string, x: number, z: number): void => {
       const size = 96;
@@ -206,7 +220,7 @@ export class BoardView {
       canvas.width = canvas.height = size;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      ctx.fillStyle = '#1d1d21';
+      ctx.fillStyle = '#ece8df';
       ctx.font = `600 ${size * 0.62}px "Caveat", "Segoe Print", "Bradley Hand", system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -214,15 +228,18 @@ export class BoardView {
       const texture = new THREE.CanvasTexture(canvas);
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.anisotropy = 4;
-      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, opacity: 0.8 });
+      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, opacity: 0.5, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(x, 0.09, z);
+      mesh.position.set(x, 0.07, z);
       mesh.rotation.y = (Math.random() - 0.5) * 0.25;
       this.coordinates.add(mesh);
+      this.coordinateMaterials.push(material);
       this.disposables.push(texture, material);
     };
-    for (let file = 0; file < 8; file++) add('abcdefgh'.charAt(file), file - 3.5, 4.2);
-    for (let rank = 0; rank < 8; rank++) add(String(rank + 1), -4.2, 3.5 - rank);
+    const label = 4 + FRAME / 2;
+    for (let file = 0; file < 8; file++) add('abcdefgh'.charAt(file), file - 3.5, label);
+    for (let rank = 0; rank < 8; rank++) add(String(rank + 1), -label, 3.5 - rank);
+    this.setCoordinateOpacity(0);
   }
 
   /* ----------------------------- queries ----------------------------- */

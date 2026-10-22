@@ -12,8 +12,8 @@ const copy = {
     tip: '提示:有些彩蛋藏在鍵盤上,有些在棋盤上,有些只是在網站上亂點。',
     siteTitle: '關於這個網站',
     siteParagraphs: [
-      '這個網站是用 Vite、TypeScript 和 Three.js 做的。棋子與展示台是用程式生成的低多邊形模型,再被即時重畫成鋼筆草圖:輪廓線、排線和輔助線都不是貼圖。沒有載入任何模型檔或圖片。',
-      '棋子可以放到任何格子,網站不檢查走法,只看盤面:有沒有一方的王被將軍、而且無路可逃?造成將軍的是哪一種棋子?兵、馬、象、車、后各對應一座展示台。',
+      '這個網站是用 Vite、TypeScript 和 Three.js 做的。棋盤與棋子是用程式生成的切面模型,再被即時重畫成黑底上的粉筆素描:輪廓線、排線和周圍的輔助線都不是貼圖。沒有載入任何模型檔或圖片。',
+      '棋子可以放到任何格子,網站不檢查走法,只看盤面:有沒有一方的王被將軍、而且無路可逃?造成將軍的是哪一種棋子?兵、馬、象、車、后各對應一頁。左下角的「?」會給你一道謎題。',
       '區塊內容在解鎖之後才會載入。這是個純前端的小遊戲,不是安全機制,但希望它夠有趣。',
     ],
     source: '看原始碼',
@@ -24,8 +24,8 @@ const copy = {
     tip: 'Hint: some eggs hide on the keyboard, some on the board, some just in clicking around the site.',
     siteTitle: 'About this site',
     siteParagraphs: [
-      'This site is built with Vite, TypeScript and Three.js. The pieces and plinths are low-poly models generated in code and redrawn in real time as a pen sketch: the outlines, hatching and construction lines are not textures. No model files or images are loaded.',
-      'Pieces can go on any square. The site does not check moves, it only looks at the board: is a king in check with nowhere to run, and which piece is giving the check? Pawn, knight, bishop, rook and queen each own a plinth.',
+      'This site is built with Vite, TypeScript and Three.js. The board and pieces are faceted models generated in code and redrawn in real time as a chalk drawing on black: the outlines, hatching and the construction lines around them are not textures. No model files or images are loaded.',
+      'Pieces can go on any square. The site does not check moves, it only looks at the board: is a king in check with nowhere to run, and which piece is giving the check? Pawn, knight, bishop, rook and queen each open one page. The ? in the corner will give you a riddle.',
       'Section content is only fetched once it is unlocked. This is a small front-end game, not a security measure, but I hope it is fun.',
     ],
     source: 'View the source',

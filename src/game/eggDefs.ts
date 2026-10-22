@@ -26,7 +26,7 @@ export const EGGS = [
   { id: 'xyzzy', category: 'keyboard' },
   { id: 'gg', category: 'keyboard' },
   { id: 'title-clicks', category: 'site' },
-  { id: 'lock-poke', category: 'site' },
+  { id: 'riddle-poke', category: 'site' },
   { id: 'idle', category: 'site' },
   { id: 'all-unlocked', category: 'site' },
 ] as const satisfies readonly EggDef[];

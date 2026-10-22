@@ -23,7 +23,15 @@ export interface FitMargins {
   bottom: number;
 }
 
-export const HOME_PITCH = 0.74;
+/** A part of the viewport, in NDC (-1..1, y up), that the scene must stay inside. */
+export interface Region {
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+}
+
+export const HOME_PITCH = 0.86;
 
 const clamp = (v: number, [lo, hi]: readonly [number, number]): number => Math.min(hi, Math.max(lo, v));
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
@@ -131,6 +139,45 @@ export class CameraRig {
     pose.dist = hi;
     this.home = pose;
     return clonePose(pose);
+  }
+
+  /**
+   * Like `fit`, but for when a panel covers part of the screen: finds the closest distance at which every
+   * point lands inside `region`, and the shift (px) that puts the target in the middle of it.
+   * Changes nothing; the caller flies there.
+   */
+  fitRegion(
+    points: THREE.Vector3[],
+    region: Region,
+    pitch: number,
+    target: THREE.Vector3,
+  ): { pose: Pose; shift: { x: number; y: number } } {
+    const { w, h } = this.size;
+    const shift = {
+      x: ((region.xMin + region.xMax) / 2) * (w / 2),
+      y: -((region.yMin + region.yMax) / 2) * (h / 2),
+    };
+    const pose: Pose = { target: target.clone(), yaw: 0, pitch, dist: 10 };
+    this.probe.setViewOffset(w, h, -shift.x, -shift.y, w, h);
+    const fits = (dist: number): boolean => {
+      pose.dist = dist;
+      this.orient(this.probe, pose);
+      this.probe.updateMatrixWorld(true);
+      return points.every((p) => {
+        const v = p.clone().project(this.probe);
+        return v.x >= region.xMin && v.x <= region.xMax && v.y >= region.yMin && v.y <= region.yMax;
+      });
+    };
+    let lo = 6;
+    let hi = 200;
+    for (let i = 0; i < 28; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) hi = mid;
+      else lo = mid;
+    }
+    pose.dist = hi;
+    this.probe.clearViewOffset();
+    return { pose: clonePose(pose), shift };
   }
 
   /** Jump straight to a pose with no animation. */

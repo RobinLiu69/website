@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /** Sides of every turned part. Few enough that the facets are the point of the shape. */
-export const FACETS = 8;
+export const FACETS = 10;
 
 /** Which tint of the piece's colour a part is painted with. */
 export type Tone = 'main' | 'shade' | 'dark' | 'light';
@@ -77,6 +77,50 @@ export function turnFacet(rings: readonly Ring[], sides = FACETS): THREE.BufferG
   g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   g.computeVertexNormals();
   return g;
+}
+
+/** A (radius, height) point on a turned profile. */
+export type Pt = readonly [number, number];
+
+/** `count + 1` evenly spaced points along a smooth curve through the control points. */
+export function curve(control: readonly Pt[], count: number): Pt[] {
+  const spline = new THREE.SplineCurve(control.map(([r, y]) => new THREE.Vector2(r, y)));
+  return spline.getSpacedPoints(count).map((v): Pt => [v.x, v.y]);
+}
+
+/**
+ * Rings for a smooth stretch of a turning, each turned half a facet from the last so that the surface breaks
+ * into a lattice of diamonds. The last ring is not turned, so whatever follows joins it squarely.
+ */
+export function lattice(points: readonly Pt[]): Ring[] {
+  return points.map(([r, y], i): Ring => [r, y, (points.length - 1 - i) % 2 === 1 ? 1 : 0]);
+}
+
+/** A flat-edged flange standing on `y`: out from `r - lip`, up its edge, back in. */
+export function flange(r: number, y: number, height: number, lip = 0.02): Ring[] {
+  return [
+    [r - lip, y],
+    [r, y + lip],
+    [r, y + height - lip],
+    [r - lip, y + height],
+  ];
+}
+
+/**
+ * Square battlements round a turned wall. `radius` is the wall's outer corner radius; the blocks sit on every
+ * second facet, standing from `y` up by `height`.
+ */
+export function merlons(radius: number, thickness: number, y: number, height: number, sides = FACETS): THREE.BufferGeometry[] {
+  const apothem = radius * Math.cos(Math.PI / sides);
+  const width = 2 * radius * Math.sin(Math.PI / sides) * 0.96;
+  const blocks: THREE.BufferGeometry[] = [];
+  for (let k = 0; k < sides; k += 2) {
+    const block = chamferBox(width, height, thickness, 0.012);
+    block.translate(0, y + height / 2, apothem - thickness / 2 + 0.004);
+    block.rotateY(((k + 0.5) * Math.PI * 2) / sides);
+    blocks.push(block);
+  }
+  return blocks;
 }
 
 /** A faceted ball. */

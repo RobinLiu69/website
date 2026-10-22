@@ -21,11 +21,11 @@ interface Ripple {
   to: number;
 }
 
-const CONFETTI = [PALETTE.accent, PALETTE.accentSoft, PALETTE.white, PALETTE.boardDark, PALETTE.ink];
+const CONFETTI = [PALETTE.accent, PALETTE.accentSoft, PALETTE.white, PALETTE.ink];
 
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
 
-/** Low-poly shards and confetti. Everything is cleaned up as it expires. */
+/** Low-poly shards and chalk dust. Everything is cleaned up as it expires. */
 export class Effects {
   private readonly group = new THREE.Group();
   private readonly bits: Bit[] = [];

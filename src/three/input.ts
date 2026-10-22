@@ -1,8 +1,6 @@
 import * as THREE from 'three';
-import type { MatingPiece } from '../chess/puzzles';
 import { type Square, fileOf, rankOf, toSquare } from '../chess/types';
 import { type BoardView, type PieceView, squareAt } from './boardView';
-import type { Plinths } from './plinthView';
 import type { Stage } from './stage';
 import { ease } from './tween';
 
@@ -16,8 +14,6 @@ export interface InputHost {
   boardEnabled(): boolean;
   orbitEnabled(): boolean;
   move(from: Square, to: Square): void;
-  plinthClick(piece: MatingPiece): void;
-  plinthHover(piece: MatingPiece | null): void;
   /** A click that landed on nothing in particular. */
   backgroundClick(): void;
   /** Called on any press, so idle hints can fade away. */
@@ -26,18 +22,17 @@ export interface InputHost {
   announce(message: string): void;
 }
 
-type Picked = { kind: 'piece'; view: PieceView } | { kind: 'plinth'; piece: MatingPiece } | null;
+type Picked = { kind: 'piece'; view: PieceView } | null;
 
 type Gesture =
   | { kind: 'piece'; id: number; view: PieceView; x: number; y: number; dragging: boolean; wasSelected: boolean }
-  | { kind: 'plinth'; id: number; piece: MatingPiece; x: number; y: number; moved: boolean }
   | { kind: 'orbit'; id: number; x: number; y: number; lastX: number; lastY: number; moved: boolean; orbits: boolean };
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 /**
- * Pointer and keyboard control of the stage: drag or click pieces, click
- * plinths, orbit and zoom the camera, and a keyboard cursor for the board.
+ * Pointer and keyboard control of the stage: drag or click pieces, orbit and
+ * zoom the camera, and a keyboard cursor for the board.
  */
 export class InputController {
   private readonly canvas: HTMLCanvasElement;
@@ -51,14 +46,12 @@ export class InputController {
   private gesture: Gesture | null = null;
   private selected: PieceView | null = null;
   private cursor: Square | null = null;
-  private hoverPlinth: MatingPiece | null = null;
   private pinchStart = 0;
   private dragLift = 0;
 
   constructor(
     private readonly stage: Stage,
     private readonly board: BoardView,
-    private readonly plinths: Plinths,
     private readonly host: InputHost,
   ) {
     this.canvas = stage.renderer.domElement;
@@ -134,14 +127,10 @@ export class InputController {
 
   private pick(e: PointerEvent): Picked {
     this.setRay(e);
-    const targets: THREE.Object3D[] = [...this.plinths.pickables];
-    if (this.host.boardEnabled()) targets.push(...this.board.pickables);
-    const first = this.raycaster.intersectObjects(targets, false)[0];
-    if (!first) return null;
-    const view = this.board.viewFromObject(first.object);
-    if (view) return { kind: 'piece', view };
-    const plinth = this.plinths.fromObject(first.object);
-    return plinth ? { kind: 'plinth', piece: plinth.piece } : null;
+    if (!this.host.boardEnabled()) return null;
+    const first = this.raycaster.intersectObjects(this.board.pickables, false)[0];
+    const view = first ? this.board.viewFromObject(first.object) : undefined;
+    return view ? { kind: 'piece', view } : null;
   }
 
   private squareUnderPointer(e: PointerEvent, plane: THREE.Plane): Square | null {
@@ -184,10 +173,6 @@ export class InputController {
       this.setSelected(view);
       return;
     }
-    if (picked?.kind === 'plinth') {
-      this.gesture = { kind: 'plinth', id: e.pointerId, piece: picked.piece, x: e.clientX, y: e.clientY, moved: false };
-      return;
-    }
     this.gesture = {
       kind: 'orbit',
       id: e.pointerId,
@@ -218,8 +203,6 @@ export class InputController {
         this.beginDrag(g.view);
       }
       if (g.dragging) this.dragTo(e, g.view);
-    } else if (g.kind === 'plinth' && g.id === e.pointerId) {
-      if (Math.hypot(e.clientX - g.x, e.clientY - g.y) > DRAG_THRESHOLD) g.moved = true;
     } else if (g.kind === 'orbit') {
       if (this.pointers.size >= 2) {
         const d = this.pinchDistance();
@@ -262,11 +245,6 @@ export class InputController {
       } else if (g.wasSelected) {
         this.setSelected(null);
       }
-    } else if (g.kind === 'plinth') {
-      if (!g.moved) {
-        const picked = this.pick(e);
-        if (picked?.kind === 'plinth' && picked.piece === g.piece) this.host.plinthClick(g.piece);
-      }
     } else if (!g.moved) {
       this.backgroundClick(e);
     }
@@ -297,13 +275,7 @@ export class InputController {
       this.stage.rig.parallaxTarget.set(this.ndc.x, this.ndc.y);
     }
     if (e.pointerType === 'touch') return;
-    const picked = this.pick(e);
-    const piece = picked?.kind === 'plinth' ? picked.piece : null;
-    if (piece !== this.hoverPlinth) {
-      this.hoverPlinth = piece;
-      this.host.plinthHover(piece);
-    }
-    this.canvas.style.cursor = picked ? (picked.kind === 'plinth' ? 'pointer' : 'grab') : '';
+    this.canvas.style.cursor = this.pick(e) ? 'grab' : '';
     if (this.selected && this.host.boardEnabled()) {
       this.board.hover(this.squareUnderPointer(e, this.groundPlane));
     }
@@ -312,10 +284,6 @@ export class InputController {
   private leave(): void {
     this.canvas.style.cursor = '';
     this.stage.rig.parallaxTarget.set(0, 0);
-    if (this.hoverPlinth !== null) {
-      this.hoverPlinth = null;
-      this.host.plinthHover(null);
-    }
     if (!this.selected && this.cursor === null) this.board.hover(null);
   }
 
