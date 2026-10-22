@@ -1,8 +1,9 @@
 name: Test and deploy to GitHub Pages
 
 on:
+  # Every branch gets the checks. Only the repository's default branch is deployed, whatever it is called.
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 
@@ -42,12 +43,12 @@ jobs:
           BASE_PATH: /${{ github.event.repository.name }}/
 
       - uses: actions/upload-pages-artifact@v3
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         with:
           path: dist
 
   deploy:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     needs: build
     runs-on: ubuntu-latest
     permissions:

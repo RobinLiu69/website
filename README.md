@@ -96,13 +96,13 @@ npm run preview    # 預覽建置結果
 
 ## 部署到 GitHub Pages
 
-1. 到 repo 的 **Settings → Pages**,把 **Source** 設成 **GitHub Actions**。
-2. 把程式推到 `main`,`.github/workflows/deploy.yml` 會跑型別檢查、測試、建置,然後部署。
+1. 到 repo 的 **Settings → Pages**,把 **Source** 設成 **GitHub Actions**(只要做一次)。
+2. 把程式推到 repo 的**預設分支**(一般是 `main`),`.github/workflows/deploy.yml` 會跑型別檢查、測試、建置,然後部署。如果程式早就推上去了、只是 Pages 還沒打開,到 **Actions** 分頁按 **Run workflow** 手動跑一次(或對失敗的那次按 **Re-run all jobs**)。
 3. 網址會是 `https://<帳號>.github.io/<repo 名稱>/`。
 
 這是 project site,資源路徑需要 `/<repo 名稱>/` 前綴,workflow 已經用 `BASE_PATH` 帶進去(分享預覽圖用的 `SITE_URL` 也是)。如果你用自訂網域,或 repo 名稱是 `<帳號>.github.io`,請在 workflow 裡把 `BASE_PATH` 改成 `/`,並把 `SITE_URL` 換成你的網址。
 
-分支與 PR 只會跑檢查、不會部署。
+其他分支與 PR 只會跑檢查、不會部署。之後如果把預設分支改名(例如改成 `main`),記得到 **Settings → Environments → github-pages** 確認允許部署的分支也跟著改。
 
 ## 專案結構
 
