@@ -1,15 +1,14 @@
 import type { Square } from '../chess/types';
 import { parseSquare } from '../chess/types';
-import { profile } from '../content/profile';
 import { type SectionContext, loadSection } from '../content/loaders';
 import { type SectionId, sectionById } from '../content/sections';
-import { type Lang, getLang, t } from '../i18n';
+import { type Lang, t } from '../i18n';
 
 export interface TerminalContext {
   isUnlocked(id: SectionId): boolean;
   openSection(id: SectionId): void;
   sectionContext(): SectionContext;
-  /** Resolves false when there was nothing to move. */
+  /** Resolves false when the move is not legal (or it is not the player's turn). */
   move(from: Square, to: Square): Promise<boolean>;
   hasPiece(square: Square): boolean;
   resetBoard(): void;
@@ -26,10 +25,10 @@ export interface TerminalResult {
 
 /** What the terminal calls each section. */
 const FILES: ReadonlyArray<{ name: string; id: SectionId }> = [
-  { name: 'about.txt', id: 'about' },
-  { name: 'projects.txt', id: 'projects' },
-  { name: 'skills.md', id: 'skills' },
-  { name: 'contact.txt', id: 'contact' },
+  { name: 'fragments.txt', id: 'about' },
+  { name: 'objects.txt', id: 'projects' },
+  { name: 'traces.md', id: 'skills' },
+  { name: 'roads.txt', id: 'contact' },
   { name: '.secret', id: 'secret' },
 ];
 
@@ -75,7 +74,7 @@ export function createInterpreter(ctx: TerminalContext): (line: string) => Promi
     const moved = await ctx.move(from, to);
     return moved
       ? say('terminal.moved', { from: (match[1] as string).toLowerCase(), to: (match[2] as string).toLowerCase() })
-      : say('terminal.moveUsage');
+      : say('terminal.illegal');
   };
 
   return async (line) => {
@@ -92,7 +91,7 @@ export function createInterpreter(ctx: TerminalContext): (line: string) => Promi
       case '?':
         return say('terminal.help');
       case 'whoami':
-        return { out: `${profile.name}\n${profile.tagline[getLang()]}` };
+        return say('terminal.whoami');
       case 'ls':
         return {
           out: FILES.map((f) => {
@@ -115,8 +114,7 @@ export function createInterpreter(ctx: TerminalContext): (line: string) => Promi
         if (!id) return say('terminal.noFile', { file: args[0] });
         if (!ctx.isUnlocked(id)) return say('terminal.locked', { file: args[0] });
         ctx.openSection(id);
-        const name = id === 'secret' ? t('section.secretOpen') : t(`section.${sectionById(id).id}`);
-        return { out: t('terminal.opened', { section: name }), action: 'exit' };
+        return { out: t('terminal.opened', { section: t(`section.${sectionById(id).id}`) }), action: 'exit' };
       }
       case 'move':
         return move(args.join(' '));

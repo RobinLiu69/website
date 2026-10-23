@@ -95,6 +95,11 @@ export class Sfx {
     }
   }
 
+  /** A piece that was put down where it may not go: a dull, short thud. */
+  refuse(): void {
+    this.tone(150, 0.14, 'sine', 0.07, 85);
+  }
+
   /** A wooden knock. */
   move(): void {
     this.tone(260, 0.09, 'triangle', 0.09, 140);

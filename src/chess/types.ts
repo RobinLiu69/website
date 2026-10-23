@@ -32,3 +32,10 @@ export function parseSquare(name: string): Square | null {
 export const opposite = (c: Color): Color => (c === 'w' ? 'b' : 'w');
 
 export const PIECE_TYPES: readonly PieceType[] = ['p', 'n', 'b', 'r', 'q', 'k'];
+
+/** The five pieces that can deliver checkmate (a king never gives check). Each one has a page of its own. */
+export type MatingPiece = 'p' | 'n' | 'b' | 'r' | 'q';
+
+export const MATING_PIECES: readonly MatingPiece[] = ['p', 'n', 'b', 'r', 'q'];
+
+export const isMatingPiece = (type: PieceType): type is MatingPiece => type !== 'k';

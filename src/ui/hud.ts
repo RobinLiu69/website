@@ -1,72 +1,48 @@
-import type { MatingPiece } from '../chess/puzzles';
-import { profile } from '../content/profile';
 import { SECTIONS, type SectionId } from '../content/sections';
+import type { MatingPiece } from '../chess/types';
 import { type Lang, t } from '../i18n';
 import { glyph, h, icon } from './dom';
 
 export interface HudHost {
   reset(): void;
-  riddle(): void;
   toggleLang(): void;
   toggleSound(): void;
-  puzzleRestart(): void;
-  puzzleLeave(): void;
-  signatureClick(): void;
   sigilClick(piece: MatingPiece): void;
 }
 
 export interface HudState {
   lang: Lang;
   sound: boolean;
-  /** Pieces whose sections are unlocked. */
+  /** Pieces whose pages have been opened. */
   unlocked: readonly MatingPiece[];
-  /** The piece whose section is open in the panel. */
+  /** The piece whose page is open in the panel. */
   open: MatingPiece | null;
-  puzzle: { piece: MatingPiece; solved: boolean } | null;
-  /** Nothing is left to find: the riddle button has done its job. */
-  finished: boolean;
   sectionTitle(id: SectionId): string;
 }
 
 /**
- * The few marks that are not the board: a signature, small round buttons, a riddle's one line while one is
- * set, and, once something has been opened, a row of sigils to open it again.
+ * The few marks that are not the board: small round buttons, and, once something has been opened, a row of
+ * sigils to open it again. There is no name and no text; the page says nothing about itself.
  */
 export class Hud {
-  private readonly signature = h('h1', { class: 'signature', text: profile.name });
   private readonly sigils = h('nav', { class: 'sigils', attrs: { hidden: '' } });
   private readonly langBtn = h('button', { class: 'orb orb-text', attrs: { type: 'button' } });
   private readonly soundBtn = h('button', { class: 'orb', attrs: { type: 'button' } });
   private readonly resetBtn = h('button', { class: 'orb', attrs: { type: 'button' } });
-  private readonly riddleBtn = h('button', { class: 'orb orb-text', attrs: { type: 'button' }, text: '?' });
-  private readonly riddle = h('div', { class: 'riddle', attrs: { hidden: '' } });
   private known = new Set<MatingPiece>();
 
   constructor(
     root: HTMLElement,
     private readonly host: HudHost,
   ) {
-    this.signature.addEventListener('click', () => this.host.signatureClick());
     this.langBtn.addEventListener('click', () => this.host.toggleLang());
     this.soundBtn.addEventListener('click', () => this.host.toggleSound());
     this.resetBtn.addEventListener('click', () => this.host.reset());
-    this.riddleBtn.addEventListener('click', () => this.host.riddle());
 
     root.append(
-      h('header', { class: 'hud-top' }, this.signature, this.sigils, h('div', { class: 'hud-actions' }, this.langBtn, this.soundBtn)),
-      h(
-        'div',
-        { class: 'hud-bottom' },
-        h('div', { class: 'hud-left' }, this.resetBtn, this.riddleBtn),
-        h('div', { class: 'hud-center' }, this.riddle),
-      ),
+      h('header', { class: 'hud-top' }, this.sigils, h('div', { class: 'hud-actions' }, this.langBtn, this.soundBtn)),
+      h('div', { class: 'hud-bottom' }, h('div', { class: 'hud-left' }, this.resetBtn)),
     );
-  }
-
-  /** Makes the riddle button breathe for a moment, for a visitor who has not found it yet. */
-  nudgeRiddle(): void {
-    this.riddleBtn.classList.add('nudge');
-    window.setTimeout(() => this.riddleBtn.classList.remove('nudge'), 9000);
   }
 
   refresh(state: HudState): void {
@@ -82,12 +58,7 @@ export class Hud {
     this.resetBtn.setAttribute('aria-label', t('hud.reset'));
     this.resetBtn.title = t('hud.reset');
 
-    this.riddleBtn.setAttribute('aria-label', t('hud.riddle'));
-    this.riddleBtn.title = t('hud.riddle');
-    this.riddleBtn.hidden = state.finished;
-
     this.renderSigils(state);
-    this.renderRiddle(state.puzzle);
   }
 
   private renderSigils(state: HudState): void {
@@ -98,7 +69,7 @@ export class Hud {
     this.sigils.replaceChildren(
       ...SECTIONS.filter((section) => state.unlocked.includes(section.piece)).map((section) => {
         const title = state.sectionTitle(section.id);
-        const button = h(
+        return h(
           'button',
           {
             class: `sigil${state.open === section.piece ? ' is-open' : ''}${fresh.includes(section.piece) ? ' is-fresh' : ''}`,
@@ -109,42 +80,7 @@ export class Hud {
           h('span', { class: 'sigil-glyph', text: glyph(section.piece), attrs: { 'aria-hidden': 'true' } }),
           h('span', { class: 'sigil-name', text: title }),
         );
-        return button;
       }),
-    );
-  }
-
-  private renderRiddle(puzzle: HudState['puzzle']): void {
-    if (!puzzle) {
-      this.riddle.setAttribute('hidden', '');
-      this.riddle.replaceChildren();
-      return;
-    }
-    this.riddle.removeAttribute('hidden');
-    this.riddle.classList.toggle('solved', puzzle.solved);
-    const text = puzzle.solved ? t('riddle.solved') : t(`riddle.${puzzle.piece}`);
-
-    const restart = h(
-      'button',
-      {
-        class: 'mini-orb',
-        attrs: { type: 'button', 'aria-label': t('riddle.restart'), title: t('riddle.restart') },
-        on: { click: () => this.host.puzzleRestart() },
-      },
-      icon('reset', 15),
-    );
-    const leave = h(
-      'button',
-      {
-        class: 'mini-orb',
-        attrs: { type: 'button', 'aria-label': t('riddle.leave'), title: t('riddle.leave') },
-        on: { click: () => this.host.puzzleLeave() },
-      },
-      icon('close', 15),
-    );
-    this.riddle.replaceChildren(
-      h('span', { class: 'riddle-text' }, puzzle.solved ? icon('check', 16) : null, h('span', { text })),
-      ...(puzzle.solved ? [leave] : [restart, leave]),
     );
   }
 }

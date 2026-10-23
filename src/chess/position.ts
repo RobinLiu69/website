@@ -4,6 +4,8 @@ import {
   type Piece,
   type PieceType,
   type Square,
+  parseSquare,
+  squareName,
   toSquare,
 } from './types';
 
@@ -17,15 +19,36 @@ const LETTER_TO_TYPE: Record<string, PieceType> = {
 };
 
 export const STANDARD_PLACEMENT = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+export const STANDARD_FEN = `${STANDARD_PLACEMENT} w KQkq - 0 1`;
+
+/** Castling rights, as bits of `Position.castling`. */
+export const WHITE_KINGSIDE = 1;
+export const WHITE_QUEENSIDE = 2;
+export const BLACK_KINGSIDE = 4;
+export const BLACK_QUEENSIDE = 8;
+
+const RIGHT_LETTERS: ReadonlyArray<readonly [number, string]> = [
+  [WHITE_KINGSIDE, 'K'],
+  [WHITE_QUEENSIDE, 'Q'],
+  [BLACK_KINGSIDE, 'k'],
+  [BLACK_QUEENSIDE, 'q'],
+];
 
 /**
- * A bare 8x8 board. There is no side to move, castling or en passant: pieces
- * can be dragged anywhere, so the only question the rules ever answer is "what
- * does this arrangement look like?". Piece objects are treated as immutable, so
- * clones can share them.
+ * A chess position: the pieces, whose turn it is, which sides may still castle, and the square a pawn
+ * could be taken on en passant. Piece objects are treated as immutable and carry the id the 3D layer
+ * follows, so a move only ever swaps which cell points at which piece.
  */
 export class Position {
   readonly cells: Cells;
+  turn: Color = 'w';
+  /** Bits WHITE_KINGSIDE ... BLACK_QUEENSIDE. */
+  castling = 0;
+  /** The square a pawn skipped over on the last move (a pawn may be taken there), or -1. */
+  ep: Square = -1;
+  /** Moves since the last capture or pawn move, for the fifty-move rule. */
+  halfmove = 0;
+  fullmove = 1;
 
   constructor(cells?: Cells) {
     this.cells = cells ? cells.slice() : new Array<Piece | null>(64).fill(null);
@@ -40,7 +63,13 @@ export class Position {
   }
 
   clone(): Position {
-    return new Position(this.cells);
+    const copy = new Position(this.cells);
+    copy.turn = this.turn;
+    copy.castling = this.castling;
+    copy.ep = this.ep;
+    copy.halfmove = this.halfmove;
+    copy.fullmove = this.fullmove;
+    return copy;
   }
 
   findKing(color: Color): Square {
@@ -55,9 +84,13 @@ export class Position {
     return out;
   }
 
-  /** Parses the piece-placement field of a FEN string ("8/8/..." from rank 8 down). */
+  /**
+   * Parses a FEN string. Only the piece placement is required; whatever follows (side to move,
+   * castling, en passant, clocks) is read when present. Without a castling field, the rights are
+   * worked out from where the kings and rooks stand.
+   */
   static fromPlacement(fen: string): Position {
-    const placement = fen.trim().split(/\s+/)[0] ?? '';
+    const [placement = '', turn, castling, ep, half, full] = fen.trim().split(/\s+/);
     const ranks = placement.split('/');
     if (ranks.length !== 8) throw new Error(`Placement needs 8 ranks: "${placement}"`);
     const position = new Position();
@@ -79,7 +112,38 @@ export class Position {
       }
       if (file !== 8) throw new Error(`Rank "${row}" does not add up to 8 files`);
     });
+
+    if (turn === 'b') position.turn = 'b';
+    position.castling = castling === undefined ? position.inferCastling() : parseCastling(castling);
+    if (ep && ep !== '-') {
+      const square = parseSquare(ep);
+      if (square !== null) position.ep = square;
+    }
+    if (half !== undefined && Number.isFinite(Number(half))) position.halfmove = Number(half);
+    if (full !== undefined && Number(full) >= 1) position.fullmove = Number(full);
     return position;
+  }
+
+  static fromFen(fen: string): Position {
+    return Position.fromPlacement(fen);
+  }
+
+  /** Rights that make sense for the pieces as they stand: a king and a rook on their home squares. */
+  private inferCastling(): number {
+    const is = (square: Square, color: Color, type: PieceType): boolean => {
+      const piece = this.cells[square];
+      return piece?.color === color && piece.type === type;
+    };
+    let rights = 0;
+    if (is(4, 'w', 'k')) {
+      if (is(7, 'w', 'r')) rights |= WHITE_KINGSIDE;
+      if (is(0, 'w', 'r')) rights |= WHITE_QUEENSIDE;
+    }
+    if (is(60, 'b', 'k')) {
+      if (is(63, 'b', 'r')) rights |= BLACK_KINGSIDE;
+      if (is(56, 'b', 'r')) rights |= BLACK_QUEENSIDE;
+    }
+    return rights;
   }
 
   toPlacement(): string {
@@ -103,7 +167,26 @@ export class Position {
     return rows.join('/');
   }
 
-  static standard(): Position {
-    return Position.fromPlacement(STANDARD_PLACEMENT);
+  toFen(): string {
+    const rights = RIGHT_LETTERS.filter(([bit]) => (this.castling & bit) !== 0)
+      .map(([, letter]) => letter)
+      .join('');
+    const ep = this.ep >= 0 ? squareName(this.ep) : '-';
+    return `${this.toPlacement()} ${this.turn} ${rights || '-'} ${ep} ${this.halfmove} ${this.fullmove}`;
   }
+
+  /** Identifies the position for the repetition rule: the pieces, the side to move, castling and en passant. */
+  key(): string {
+    return `${this.toPlacement()} ${this.turn} ${this.castling} ${this.ep}`;
+  }
+
+  static standard(): Position {
+    return Position.fromPlacement(STANDARD_FEN);
+  }
+}
+
+function parseCastling(field: string): number {
+  let rights = 0;
+  for (const [bit, letter] of RIGHT_LETTERS) if (field.includes(letter)) rights |= bit;
+  return rights;
 }

@@ -1,8 +1,8 @@
 import { profile } from './content/profile';
-import { detectLang, getLang, setLang, t } from './i18n';
+import { detectLang, setLang, t } from './i18n';
 import { h } from './ui/dom';
 
-/** Shown instead of the board when the browser cannot run WebGL: a name and a way to get in touch. */
+/** Shown instead of the board when the browser cannot run WebGL: a way to get in touch, and nothing else. */
 export function renderFallback(root: HTMLElement): void {
   setLang(detectLang());
   const { email, github } = profile.links;
@@ -10,8 +10,6 @@ export function renderFallback(root: HTMLElement): void {
     h(
       'main',
       { class: 'fallback' },
-      h('h1', { text: profile.name }),
-      h('p', { class: 'tagline', text: profile.tagline[getLang()] }),
       h('h2', { text: t('fallback.title') }),
       h('p', { text: t('fallback.body') }),
       h(

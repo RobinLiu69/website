@@ -37,7 +37,7 @@ const PIECE_SCALE = 1;
  * Knights stand in profile, looking toward the middle of the board, so the
  * horse reads from the default camera instead of showing a thin slab.
  */
-function knightYaw(file: number): number {
+export function knightYaw(file: number): number {
   return file < 4 ? 0 : Math.PI;
 }
 
@@ -101,6 +101,11 @@ export class BoardView {
   private readonly hoverMark: THREE.Mesh;
   private readonly selectMark: THREE.Mesh;
   private readonly checkMarks: THREE.Mesh[] = [];
+  /** Little dots on the squares a lifted piece may go to, and rings on the ones where it would take something. */
+  private readonly dots: THREE.Mesh[] = [];
+  private readonly takeRings: THREE.Mesh[] = [];
+  /** A faint frame on the two squares of the last move. */
+  private readonly lastMarks: THREE.Mesh[] = [];
   private readonly disposables: Array<{ dispose(): void }> = [];
 
   constructor(
@@ -139,6 +144,27 @@ export class BoardView {
       this.checkMarks.push(mark);
       this.root.add(mark);
     }
+
+    const dotGeometry = new THREE.CircleGeometry(0.15, 20).rotateX(-Math.PI / 2);
+    const ringGeometry = new THREE.RingGeometry(0.33, 0.43, 32).rotateX(-Math.PI / 2);
+    const lastFrame = squareFrame(0.98, 0.9);
+    const targetMaterial = overlay(PALETTE.accent, 0.85);
+    const lastMaterial = overlay(PALETTE.accent, 0.38);
+    this.disposables.push(dotGeometry, ringGeometry, lastFrame, targetMaterial, lastMaterial);
+    const pool = (list: THREE.Mesh[], count: number, geometry: THREE.BufferGeometry, material: THREE.Material, y: number): void => {
+      for (let i = 0; i < count; i++) {
+        const mark = new THREE.Mesh(geometry, material);
+        mark.position.y = y;
+        mark.visible = false;
+        mark.renderOrder = 2;
+        mark.layers.set(MARK_LAYER);
+        list.push(mark);
+        this.root.add(mark);
+      }
+    };
+    pool(this.dots, 28, dotGeometry, targetMaterial, 0.013);
+    pool(this.takeRings, 16, ringGeometry, targetMaterial, 0.013);
+    pool(this.lastMarks, 2, lastFrame, lastMaterial, 0.011);
   }
 
   private buildBoard(): void {
@@ -292,6 +318,18 @@ export class BoardView {
     this.checkMarks.forEach((mark, i) => this.placeMark(mark, squares[i] ?? null));
   }
 
+  /** Marks where a lifted piece may go. Passing two empty lists clears the marks. */
+  showTargets(quiet: readonly Square[], captures: readonly Square[]): void {
+    this.dots.forEach((mark, i) => this.placeMark(mark, quiet[i] ?? null));
+    this.takeRings.forEach((mark, i) => this.placeMark(mark, captures[i] ?? null));
+  }
+
+  /** The two squares of the move just played; no arguments clears them. */
+  setLastMove(from: Square | null = null, to: Square | null = null): void {
+    this.placeMark(this.lastMarks[0] as THREE.Mesh, from);
+    this.placeMark(this.lastMarks[1] as THREE.Mesh, to);
+  }
+
   private placeMark(mark: THREE.Mesh, square: Square | null): void {
     mark.visible = square !== null;
     if (square !== null) {
@@ -403,6 +441,9 @@ export class BoardView {
     const duration = options.duration ?? this.travelTime(id, square);
     const hop = options.hop ?? Math.min(0.2 + 0.07 * distance, 0.9);
     const token = ++view.motion;
+    // A knight turns to look toward the middle of the board from wherever it lands.
+    const yawFrom = view.mesh.rotation.y;
+    const yawTo = view.type === 'n' ? knightYaw(fileOf(square)) : yawFrom;
     return this.tweens.run(
       duration,
       (t) => {
@@ -410,6 +451,7 @@ export class BoardView {
         view.object.position.x = from.x + (to.x - from.x) * t;
         view.object.position.z = from.z + (to.z - from.z) * t;
         view.object.position.y = from.y * (1 - t) + hop * Math.sin(Math.PI * t);
+        if (yawTo !== yawFrom) view.mesh.rotation.y = yawFrom + (yawTo - yawFrom) * t;
       },
       { delay: options.delay ?? 0, ease: ease.inOutSine },
     );

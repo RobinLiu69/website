@@ -1,10 +1,10 @@
-import type { MatingPiece } from '../chess/puzzles';
+import type { MatingPiece } from '../chess/types';
 
 export type SectionId = 'about' | 'projects' | 'skills' | 'contact' | 'secret';
 
 export interface SectionMeta {
   id: SectionId;
-  /** The piece whose checkmate unlocks this section. */
+  /** The piece whose door opens this section (see game/locks.ts). */
   piece: MatingPiece;
 }
 

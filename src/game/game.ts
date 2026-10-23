@@ -1,51 +1,58 @@
-import { type FreeMoveResult, applyFreeMove } from '../chess/freeMove';
+import { bookReply } from '../chess/book';
 import { assignIds, idCounter } from '../chess/identity';
 import { Position } from '../chess/position';
-import { MATING_PIECES, type MatingPiece, puzzlePosition } from '../chess/puzzles';
-import { type Evaluation, evaluate, matingTypes } from '../chess/rules';
-import type { Color, Piece, PieceType, Square } from '../chess/types';
+import { type DrawReason, type Move, findMove, gameStatus, legalMoves, makeMove, moveToUci } from '../chess/rules';
+import { search } from '../chess/search';
+import { type Color, type MatingPiece, type Piece, type Square, isMatingPiece } from '../chess/types';
 import { PALETTE } from '../theme';
 import { type BoardView, squareCenter } from '../three/boardView';
 import type { Effects } from '../three/effects';
 import type { Stage } from '../three/stage';
 import { Emitter } from './events';
 
-export type GameMode = { kind: 'sandbox' } | { kind: 'puzzle'; piece: MatingPiece };
-
 export interface GameEvents extends Record<string, unknown> {
-  /** A move has finished animating. */
-  moved: { result: FreeMoveResult; mover: Piece };
+  /** A move has finished animating, by either side. */
+  moved: { move: Move; mover: Piece; color: Color };
   /** Fires at the moment of impact, while the shards fly. */
   captured: { victim: Piece; by: Piece; square: Square };
   promoted: { piece: Piece; square: Square };
-  swapped: { a: Piece; b: Piece };
+  castled: { color: Color; side: 'k' | 'q' };
+  enPassant: { color: Color; square: Square };
   check: { color: Color };
-  checkmate: { mated: Color[]; pieces: MatingPiece[]; evaluation: Evaluation };
-  stalemate: { color: Color };
-  noKing: { color: Color };
-  mode: GameMode;
+  checkmate: { loser: Color; pieces: MatingPiece[]; kingSquare: Square };
+  stalemate: undefined;
+  draw: { reason: DrawReason };
+  /** The opponent has started (true) or finished (false) thinking about its answer. */
+  thinking: boolean;
   reset: undefined;
 }
 
-const isMatingPiece = (type: PieceType): type is MatingPiece => (MATING_PIECES as readonly string[]).includes(type);
+const none = (): void => {};
 
 /**
- * Owns the arrangement of pieces and plays moves on it. Moves have no rules:
- * the controller applies them, animates the 3D board, then looks at the result
- * and reports checks, mates and the like.
+ * Owns the game: the position, whose turn it is, and the quiet opponent. The player has the white pieces and
+ * plays by the rules; after every move the black side answers by itself. Each move is applied to the position
+ * at once and then animated on the 3D board, and the result is reported as events.
  */
 export class Game extends Emitter<GameEvents> {
   position = new Position();
-  mode: GameMode = { kind: 'sandbox' };
+  /** True while a move is playing out or the opponent is thinking. */
   busy = false;
+  /** The game has ended (mate, stalemate or a draw) and is waiting to be reset. */
+  over = false;
+  readonly player: Color = 'w';
 
   private readonly nextId = idCounter(1);
-  private sandboxSnapshot: Position | null = null;
+  private history: string[] = [];
+  private seen: string[] = [];
+  /** Bumped on every reset, so that anything still in flight from the old game drops its result. */
+  private epoch = 0;
 
   constructor(
     private readonly board: BoardView,
     private readonly effects: Effects,
     private readonly stage: Stage,
+    private readonly random: () => number = Math.random,
   ) {
     super();
   }
@@ -55,6 +62,9 @@ export class Game extends Emitter<GameEvents> {
     const start = Position.standard();
     assignIds(start, null, this.nextId);
     this.position = start;
+    this.history = [];
+    this.seen = [start.key()];
+    this.over = false;
     await this.board.sync(start, animate, 0.016);
   }
 
@@ -62,35 +72,123 @@ export class Game extends Emitter<GameEvents> {
     return this.position.get(square);
   }
 
-  async move(from: Square, to: Square): Promise<boolean> {
-    if (this.busy) return false;
-    const mover = this.position.get(from);
-    if (!mover || mover.id === undefined) return false;
+  get playersTurn(): boolean {
+    return !this.over && !this.busy && this.position.turn === this.player;
+  }
 
-    const duration = this.board.travelTime(mover.id, to);
-    const result = applyFreeMove(this.position, from, to);
-    if (!result) return false;
-    this.busy = true;
-
-    const jobs: Promise<void>[] = [this.board.movePiece(mover.id, to, { duration })];
-    if (result.swapped?.id !== undefined) {
-      jobs.push(this.board.movePiece(result.swapped.id, from, { duration, hop: 0.55 }));
+  /** Where the player's piece on `square` may go: empty squares, and squares it would take a piece on. */
+  targetsFrom(square: Square): { quiet: Square[]; captures: Square[] } {
+    const piece = this.position.get(square);
+    const out = { quiet: [] as Square[], captures: [] as Square[] };
+    if (!piece || piece.color !== this.player || !this.playersTurn) return out;
+    const seen = new Set<Square>();
+    for (const move of legalMoves(this.position)) {
+      if (move.from !== square || seen.has(move.to)) continue;
+      seen.add(move.to);
+      (move.captured ? out.captures : out.quiet).push(move.to);
     }
-    if (result.captured) {
-      const victim = result.captured;
-      jobs.push(this.stage.tweens.run(duration * 0.72, () => {}).then(() => this.impact(victim, mover, to)));
+    return out;
+  }
+
+  /** The player's move. Returns false when it is not legal (or it is not the player's turn). */
+  async play(from: Square, to: Square): Promise<boolean> {
+    if (!this.playersTurn) return false;
+    const move = findMove(this.position, from, to, 'q');
+    if (!move) return false;
+    this.busy = true;
+    const epoch = this.epoch;
+    const finished = await this.apply(move, epoch);
+    if (finished && !this.over && this.position.turn !== this.player) await this.reply(epoch);
+    if (epoch === this.epoch) this.busy = false;
+    return true;
+  }
+
+  /**
+   * Sets the board up from a FEN string, for tests and for trying a position out. The history starts over,
+   * so the opponent plays from its own judgement and not from the opening book.
+   */
+  async setup(fen: string): Promise<void> {
+    const epoch = ++this.epoch;
+    this.busy = true;
+    this.emit('thinking', false);
+    const next = Position.fromFen(fen);
+    assignIds(next, this.position, this.nextId);
+    this.position = next;
+    this.history = ['setup'];
+    this.seen = [next.key()];
+    this.over = false;
+    this.board.setChecked([]);
+    this.board.setLastMove(null);
+    await this.board.sync(next, false);
+    if (epoch !== this.epoch) return;
+    this.busy = false;
+    this.judge();
+  }
+
+  /** Starts a fresh game: every piece glides home. Works at any moment, even while the opponent is thinking. */
+  async resetBoard(): Promise<void> {
+    const epoch = ++this.epoch;
+    this.busy = true;
+    this.emit('thinking', false);
+    const fresh = Position.standard();
+    assignIds(fresh, this.position, this.nextId);
+    this.position = fresh;
+    this.history = [];
+    this.seen = [fresh.key()];
+    this.over = false;
+    this.board.setChecked([]);
+    this.board.setLastMove(null);
+    await this.board.sync(fresh, true);
+    if (epoch !== this.epoch) return;
+    this.busy = false;
+    this.emit('reset', undefined);
+  }
+
+  /* ------------------------------ one move ------------------------------ */
+
+  /** Plays `move` on the position and on the board. Resolves false if a reset got in the way. */
+  private async apply(move: Move, epoch: number): Promise<boolean> {
+    const position = this.position;
+    const mover = position.get(move.from) as Piece;
+    const color = mover.color;
+    const victimSquare = move.flag === 'ep' ? move.to + (color === 'w' ? -8 : 8) : move.to;
+    const victim = move.captured ? position.get(victimSquare) : null;
+    const id = mover.id as number;
+    const duration = this.board.travelTime(id, move.to);
+
+    makeMove(position, move);
+
+    const jobs: Promise<void>[] = [this.board.movePiece(id, move.to, { duration })];
+    if (move.flag === 'castle-k' || move.flag === 'castle-q') {
+      // The rook has already been moved on the position; it hops over the king on the board.
+      const rookTo = move.flag === 'castle-k' ? move.to - 1 : move.to + 1;
+      const rook = position.get(rookTo);
+      if (rook?.id !== undefined) jobs.push(this.board.movePiece(rook.id, rookTo, { duration, hop: 0.55 }));
+    }
+    if (victim) {
+      jobs.push(this.stage.tweens.run(duration * 0.72, none).then(() => this.impact(victim, mover, victimSquare)));
     }
     await Promise.all(jobs);
+    if (epoch !== this.epoch) return false;
 
-    for (const promotion of result.promotions) {
-      const view = promotion.after.id === undefined ? undefined : this.board.viewById(promotion.after.id);
-      if (view) this.board.setType(view, promotion.after.type);
-      this.emit('promoted', { piece: promotion.after, square: promotion.square });
+    if (move.promotion) {
+      const after = position.get(move.to);
+      const view = after?.id === undefined ? undefined : this.board.viewById(after.id);
+      if (after && view) {
+        this.board.setType(view, after.type);
+        this.emit('promoted', { piece: after, square: move.to });
+      }
     }
-    if (result.swapped) this.emit('swapped', { a: mover, b: result.swapped });
-    this.emit('moved', { result, mover });
+    if (move.flag === 'castle-k' || move.flag === 'castle-q') {
+      this.emit('castled', { color, side: move.flag === 'castle-k' ? 'k' : 'q' });
+    }
+    if (move.flag === 'ep') this.emit('enPassant', { color, square: move.to });
+
+    this.history.push(moveToUci(move));
+    this.seen.push(position.key());
+    this.board.setLastMove(move.from, move.to);
+    this.emit('moved', { move, mover, color });
     this.judge();
-    this.busy = false;
     return true;
   }
 
@@ -101,65 +199,43 @@ export class Game extends Emitter<GameEvents> {
     this.emit('captured', { victim, by, square });
   }
 
-  /** Looks at the arrangement and reports what is going on. */
+  /** Looks at the position and reports what is going on. */
   private judge(): void {
-    const evaluation = evaluate(this.position);
-    const marked: Square[] = [];
-    const mated: Color[] = [];
-    for (const color of ['w', 'b'] as const) {
-      const side = evaluation[color];
-      if (side.status === 'check' || side.status === 'checkmate') marked.push(side.kingSquare);
-      if (side.status === 'check') this.emit('check', { color });
-      else if (side.status === 'checkmate') mated.push(color);
-      else if (side.status === 'stalemate') this.emit('stalemate', { color });
-      else if (side.status === 'noKing') this.emit('noKing', { color });
+    const status = gameStatus(this.position, this.seen);
+    if (status.kind === 'playing') {
+      const turn = this.position.turn;
+      this.board.setChecked(status.check ? [this.position.findKing(turn)] : []);
+      if (status.check) this.emit('check', { color: turn });
+      return;
     }
-    this.board.setChecked(marked);
-    if (mated.length > 0) {
-      const pieces = matingTypes(evaluation).filter(isMatingPiece);
-      this.emit('checkmate', { mated, pieces, evaluation });
+
+    this.over = true;
+    if (status.kind === 'checkmate') {
+      const kingSquare = this.position.findKing(status.loser);
+      this.board.setChecked([kingSquare]);
+      const pieces = [...new Set(status.checkers.map((c) => c.piece.type))].filter(isMatingPiece);
+      this.emit('checkmate', { loser: status.loser, pieces, kingSquare });
+      return;
     }
-  }
-
-  async loadPuzzle(piece: MatingPiece): Promise<void> {
-    if (this.busy) return;
-    this.busy = true;
-    if (this.mode.kind === 'sandbox') this.sandboxSnapshot = this.position.clone();
-    this.mode = { kind: 'puzzle', piece };
-    this.emit('mode', this.mode);
-    await this.install(puzzlePosition(piece), true);
-    this.busy = false;
-  }
-
-  async leavePuzzle(): Promise<void> {
-    if (this.mode.kind !== 'puzzle' || this.busy) return;
-    this.busy = true;
-    const snapshot = this.sandboxSnapshot ?? Position.standard();
-    this.sandboxSnapshot = null;
-    this.mode = { kind: 'sandbox' };
-    this.emit('mode', this.mode);
-    await this.install(snapshot, !this.sandboxHasIds(snapshot));
-    this.busy = false;
-  }
-
-  /** Back to the start of whatever is on the board: the opening, or the current puzzle. */
-  async resetBoard(): Promise<void> {
-    if (this.busy) return;
-    this.busy = true;
-    const fresh = this.mode.kind === 'puzzle' ? puzzlePosition(this.mode.piece) : Position.standard();
-    await this.install(fresh, true);
-    this.emit('reset', undefined);
-    this.busy = false;
-  }
-
-  private sandboxHasIds(position: Position): boolean {
-    return position.pieces().every((p) => p.piece.id !== undefined);
-  }
-
-  private async install(next: Position, needIds: boolean): Promise<void> {
-    if (needIds) assignIds(next, this.position, this.nextId);
-    this.position = next;
     this.board.setChecked([]);
-    await this.board.sync(next, true);
+    if (status.kind === 'stalemate') this.emit('stalemate', undefined);
+    else this.emit('draw', { reason: status.reason });
+  }
+
+  /** The opponent's turn: it thinks for a moment, then plays. */
+  private async reply(epoch: number): Promise<void> {
+    this.emit('thinking', true);
+    const started = performance.now();
+    // Give the lamp a moment to start dimming before the search holds the frame up.
+    await this.stage.tweens.run(0.08, none);
+    if (epoch !== this.epoch) return;
+
+    const move = bookReply(this.history, this.position, this.random) ?? search(this.position, { random: this.random })?.move ?? null;
+
+    const wanted = this.stage.reducedMotion ? 350 : 700 + this.random() * 900;
+    await this.stage.tweens.run(Math.max(0, wanted - (performance.now() - started)) / 1000, none);
+    if (epoch !== this.epoch) return;
+    if (move) await this.apply(move, epoch);
+    if (epoch === this.epoch) this.emit('thinking', false);
   }
 }

@@ -29,23 +29,26 @@ export class EggEngine extends Emitter<EggFound> {
     super();
 
     game.on('captured', ({ victim }) => {
-      const id = `capture-${victim.color === 'b' ? 'black' : 'white'}-${victim.type === 'q' ? 'queen' : victim.type === 'k' ? 'king' : ''}`;
-      if (id.endsWith('queen') || id.endsWith('king')) this.trigger(id as EggId);
+      if (victim.type === 'q') this.trigger(victim.color === 'b' ? 'capture-black-queen' : 'capture-white-queen');
       if (victim.color === 'b' && victim.type === 'p') {
         const left = game.position.pieces().some((p) => p.piece.color === 'b' && p.piece.type === 'p');
         if (!left) this.trigger('pawn-storm');
       }
     });
-    game.on('promoted', () => this.trigger('promotion'));
-    game.on('swapped', () => this.trigger('swap'));
+    // Only the player's own deeds count: the opponent castling or promoting is not an achievement.
+    game.on('promoted', ({ piece }) => piece.color === game.player && this.trigger('promotion'));
+    game.on('castled', ({ color }) => color === game.player && this.trigger('castle'));
+    game.on('enPassant', ({ color }) => color === game.player && this.trigger('en-passant'));
     game.on('stalemate', () => this.trigger('stalemate'));
-    game.on('checkmate', ({ mated }) => {
+    game.on('draw', () => this.trigger('draw'));
+    game.on('checkmate', ({ loser }) => {
       const p = game.position;
-      if (mated.includes('b') && is(at(p, 'f7'), 'w', 'q') && is(at(p, 'c4'), 'w', 'b') && is(at(p, 'e8'), 'b', 'k')) {
-        this.trigger('scholars-mate');
-      }
-      if (mated.includes('w') && is(at(p, 'h4'), 'b', 'q') && is(at(p, 'e1'), 'w', 'k') && is(at(p, 'g4'), 'w', 'p')) {
-        this.trigger('fools-mate');
+      if (loser === 'b') {
+        this.trigger('mate');
+        if (is(at(p, 'f7'), 'w', 'q') && is(at(p, 'c4'), 'w', 'b') && is(at(p, 'e8'), 'b', 'k')) this.trigger('scholars-mate');
+      } else {
+        this.trigger('mated');
+        if (is(at(p, 'h4'), 'b', 'q') && is(at(p, 'e1'), 'w', 'k') && is(at(p, 'g4'), 'w', 'p')) this.trigger('fools-mate');
       }
     });
   }

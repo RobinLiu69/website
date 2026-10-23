@@ -13,11 +13,21 @@ export interface InputHost {
   /** Pieces can be picked up (false while a side panel is open or a move is playing). */
   boardEnabled(): boolean;
   orbitEnabled(): boolean;
-  move(from: Square, to: Square): void;
+  /** Whether the player may pick this piece up. */
+  canPick(view: PieceView): boolean;
+  /** Where a picked piece may go: empty squares, and squares where it would take something. */
+  targets(square: Square): { quiet: Square[]; captures: Square[] };
+  /** Resolves false when the move is not legal. */
+  move(from: Square, to: Square): Promise<boolean>;
   /** A click that landed on nothing in particular. */
   backgroundClick(): void;
   /** Called on any press, so idle hints can fade away. */
   touched(): void;
+  /**
+   * Where the player's hand is over the board (a point on the floor, in board units), or null once it leaves.
+   * A touch or a key press leaves the light behind for a moment.
+   */
+  light(point: { x: number; z: number } | null, brief: boolean): void;
   describeSquare(square: Square): string;
   announce(message: string): void;
 }
@@ -48,6 +58,8 @@ export class InputController {
   private cursor: Square | null = null;
   private pinchStart = 0;
   private dragLift = 0;
+  /** Squares the selected piece may legally go to. */
+  private legal = new Set<Square>();
 
   constructor(
     private readonly stage: Stage,
@@ -98,6 +110,28 @@ export class InputController {
   setSelected(view: PieceView | null): void {
     this.selected = view;
     this.board.select(view ? view.square : null);
+    if (view) {
+      const { quiet, captures } = this.host.targets(view.square);
+      this.legal = new Set([...quiet, ...captures]);
+      this.board.showTargets(quiet, captures);
+    } else {
+      this.legal = new Set();
+      this.board.showTargets([], []);
+    }
+  }
+
+  /** Plays a move; a piece that was carried to a square it may not go to flies back. */
+  private async attempt(from: Square, to: Square, carried?: PieceView): Promise<void> {
+    const moved = await this.host.move(from, to);
+    if (!moved && carried) void this.board.settle(carried);
+  }
+
+  /** Reports where the pointer is over the floor, so a light can be held there. */
+  private shine(e: { clientX: number; clientY: number }, brief: boolean): void {
+    this.setRay(e);
+    if (this.raycaster.ray.intersectPlane(this.groundPlane, this.point)) {
+      this.host.light({ x: this.point.x, z: this.point.z }, brief);
+    }
   }
 
   clearSelection(): void {
@@ -158,20 +192,23 @@ export class InputController {
       /* synthetic events have no active pointer to capture */
     }
 
+    this.shine(e, e.pointerType !== 'mouse');
     const picked = this.pick(e);
     if (picked?.kind === 'piece') {
       const view = picked.view;
       const held = this.selected;
-      // With a piece already selected, clicking an enemy piece takes it.
-      if (held && held.id !== view.id && held.color !== view.color) {
-        const from = held.square;
-        this.clearSelection();
-        this.host.move(from, view.square);
+      if (this.host.canPick(view)) {
+        this.gesture = { kind: 'piece', id: e.pointerId, view, x: e.clientX, y: e.clientY, dragging: false, wasSelected: held?.id === view.id };
+        this.setSelected(view);
         return;
       }
-      this.gesture = { kind: 'piece', id: e.pointerId, view, x: e.clientX, y: e.clientY, dragging: false, wasSelected: held?.id === view.id };
-      this.setSelected(view);
-      return;
+      // With a piece in hand, clicking one of the other side's pieces is an attempt to take it.
+      if (held) {
+        const from = held.square;
+        this.clearSelection();
+        void this.attempt(from, view.square);
+        return;
+      }
     }
     this.gesture = {
       kind: 'orbit',
@@ -196,6 +233,7 @@ export class InputController {
       this.hover(e);
       return;
     }
+    this.shine(e, e.pointerType !== 'mouse');
 
     if (g.kind === 'piece' && g.id === e.pointerId) {
       if (!g.dragging && Math.hypot(e.clientX - g.x, e.clientY - g.y) > DRAG_THRESHOLD) {
@@ -241,7 +279,7 @@ export class InputController {
         this.board.hover(null);
         this.setSelected(null);
         if (target === null || target === view.square) void this.board.settle(view);
-        else this.host.move(view.square, target);
+        else void this.attempt(view.square, target, view);
       } else if (g.wasSelected) {
         this.setSelected(null);
       }
@@ -262,7 +300,7 @@ export class InputController {
       const target = this.squareUnderPointer(e, this.groundPlane);
       this.clearSelection();
       if (target !== null && target !== held.square) {
-        this.host.move(held.square, target);
+        void this.attempt(held.square, target);
         return;
       }
     }
@@ -275,15 +313,19 @@ export class InputController {
       this.stage.rig.parallaxTarget.set(this.ndc.x, this.ndc.y);
     }
     if (e.pointerType === 'touch') return;
-    this.canvas.style.cursor = this.pick(e) ? 'grab' : '';
+    this.shine(e, false);
+    const view = this.pick(e)?.view;
+    this.canvas.style.cursor = view && this.host.canPick(view) ? 'grab' : '';
     if (this.selected && this.host.boardEnabled()) {
-      this.board.hover(this.squareUnderPointer(e, this.groundPlane));
+      const square = this.squareUnderPointer(e, this.groundPlane);
+      this.board.hover(square !== null && this.legal.has(square) ? square : null);
     }
   }
 
   private leave(): void {
     this.canvas.style.cursor = '';
     this.stage.rig.parallaxTarget.set(0, 0);
+    this.host.light(null, false);
     if (!this.selected && this.cursor === null) this.board.hover(null);
   }
 
@@ -310,7 +352,8 @@ export class InputController {
     const x = clamp(this.point.x, -5.4, 5.4);
     const z = clamp(this.point.z, -5.4, 5.4);
     view.object.position.set(x, LIFT * this.dragLift, z);
-    this.board.hover(squareAt(x, z));
+    const over = squareAt(x, z);
+    this.board.hover(over !== null && this.legal.has(over) ? over : null);
   }
 
   private pinchDistance(): number {
@@ -335,6 +378,7 @@ export class InputController {
       const next = toSquare(clamp(fileOf(from) + delta[0], 0, 7), clamp(rankOf(from) + delta[1], 0, 7));
       this.cursor = next;
       this.board.hover(next);
+      this.host.light({ x: fileOf(next) - 3.5, z: 3.5 - rankOf(next) }, true);
       this.host.announce(this.host.describeSquare(next));
       return;
     }
@@ -346,7 +390,7 @@ export class InputController {
       const held = this.selected;
       if (!held) {
         const view = this.board.viewAtSquare(at);
-        if (view) {
+        if (view && this.host.canPick(view)) {
           this.setSelected(view);
           this.host.announce(this.host.describeSquare(at));
         }
@@ -355,7 +399,7 @@ export class InputController {
       } else {
         const from = held.square;
         this.setSelected(null);
-        this.host.move(from, at);
+        void this.attempt(from, at);
       }
       return;
     }

@@ -1,36 +1,36 @@
 import { h } from '../ui/dom';
 import type { SectionContext, SectionModule } from './loaders';
 
-// Placeholder skills and timeline. The skill names below are the ones this very site is built with;
-// replace everything with your own.
+// Placeholder traces: the tools in hand and the road behind, without names. The tools below are the ones this
+// very site is built with; replace everything with your own.
 const copy = {
   'zh-TW': {
-    skillsTitle: '技能',
+    skillsTitle: '手上的工具',
     groups: [
-      { name: '前端', items: ['TypeScript', 'JavaScript', 'CSS', 'Vite'] },
-      { name: '3D 與圖形', items: ['Three.js', 'WebGL', 'Shader'] },
+      { name: '手', items: ['TypeScript', 'JavaScript', 'CSS', 'Vite'] },
+      { name: '眼', items: ['Three.js', 'WebGL', 'Shader'] },
       { name: '其他', items: ['Git', 'Testing', 'Design'] },
     ],
-    timelineTitle: '經歷',
+    timelineTitle: '走過的路',
     timeline: [
-      { when: '2024 — 現在', what: '職稱 · 公司或學校', detail: '一句話說明你做了什麼。' },
-      { when: '2022 — 2024', what: '職稱 · 公司或學校', detail: '可以放成果或學到的東西。' },
-      { when: '2018 — 2022', what: '學歷或第一份工作', detail: '起點也很重要。' },
+      { when: '現在', what: '正在做的事', detail: '一句話,不必寫名字。' },
+      { when: '不久之前', what: '做過的事', detail: '留下一點痕跡就好。' },
+      { when: '很久以前', what: '開始的地方', detail: '起點也很重要。' },
     ],
     note: '範例內容:請編輯 src/content/skills.ts',
   },
   en: {
-    skillsTitle: 'Skills',
+    skillsTitle: 'Tools in hand',
     groups: [
-      { name: 'Frontend', items: ['TypeScript', 'JavaScript', 'CSS', 'Vite'] },
-      { name: '3D & graphics', items: ['Three.js', 'WebGL', 'Shaders'] },
+      { name: 'Hands', items: ['TypeScript', 'JavaScript', 'CSS', 'Vite'] },
+      { name: 'Eyes', items: ['Three.js', 'WebGL', 'Shaders'] },
       { name: 'Other', items: ['Git', 'Testing', 'Design'] },
     ],
-    timelineTitle: 'Experience',
+    timelineTitle: 'The road behind',
     timeline: [
-      { when: '2024 — now', what: 'Role · Company or school', detail: 'One line on what you did.' },
-      { when: '2022 — 2024', what: 'Role · Company or school', detail: 'Results, or what you learned.' },
-      { when: '2018 — 2022', what: 'Degree or first job', detail: 'Where it started matters too.' },
+      { when: 'Now', what: 'What is being made', detail: 'One line. No need for names.' },
+      { when: 'Not long ago', what: 'What was made', detail: 'Leave just a little trace.' },
+      { when: 'Long ago', what: 'Where it began', detail: 'Where it started matters too.' },
     ],
     note: 'Placeholder content: edit src/content/skills.ts',
   },

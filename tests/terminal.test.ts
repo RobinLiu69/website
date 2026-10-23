@@ -34,18 +34,22 @@ describe('terminal commands', () => {
   it('lists locked files as locked and unlocked ones plainly', async () => {
     const { run } = makeContext(['about']);
     const { out } = await run('ls');
-    expect(out).toContain('about.txt');
-    expect(out).not.toMatch(/about\.txt\s+\[locked\]/);
-    expect(out).toMatch(/projects\.txt\s+\[locked\]/);
+    expect(out).toContain('fragments.txt');
+    expect(out).not.toMatch(/fragments\.txt\s+\[locked\]/);
+    expect(out).toMatch(/objects\.txt\s+\[locked\]/);
     expect(out).toContain('.???');
   });
 
   it('refuses to cat a locked file and prints an unlocked one', async () => {
-    const locked = await makeContext([]).run('cat about.txt');
-    expect(locked.out).toBe(t('terminal.locked', { file: 'about.txt' }));
+    const locked = await makeContext([]).run('cat fragments.txt');
+    expect(locked.out).toBe(t('terminal.locked', { file: 'fragments.txt' }));
 
-    const open = await makeContext(['about']).run('cat about.txt');
-    expect(open.out).toContain('Robin Liu');
+    // The old section names still work as aliases.
+    const alias = await makeContext([]).run('cat about');
+    expect(alias.out).toBe(t('terminal.locked', { file: 'about' }));
+
+    const open = await makeContext(['about']).run('cat fragments.txt');
+    expect(open.out).toContain('暗處');
   });
 
   it('opens a section only when it is unlocked, then closes itself', async () => {
@@ -59,7 +63,7 @@ describe('terminal commands', () => {
     expect(result.action).toBe('exit');
   });
 
-  it('moves pieces with free coordinates in several spellings', async () => {
+  it('moves pieces by coordinates in several spellings', async () => {
     for (const line of ['move e2 e4', 'move e2e4', 'e2e4', 'e2-e4', 'MOVE E2 E4']) {
       const { run, calls } = makeContext();
       await run(line);
@@ -72,6 +76,17 @@ describe('terminal commands', () => {
     expect((await run('move e5 e6')).out).toBe(t('terminal.noPiece', { square: 'e5' }));
     expect((await run('move nonsense')).out).toBe(t('terminal.moveUsage'));
     expect(calls).toEqual([]);
+  });
+
+  it('says so when the game refuses a move', async () => {
+    const { ctx } = makeContext();
+    const refusing = createInterpreter({ ...ctx, move: async () => false });
+    expect((await refusing('move e2 e5')).out).toBe(t('terminal.illegal'));
+  });
+
+  it('does not say who is asking', async () => {
+    const { run } = makeContext();
+    expect((await run('whoami')).out).toBe(t('terminal.whoami'));
   });
 
   it('asks twice before wiping progress', async () => {

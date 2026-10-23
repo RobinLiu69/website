@@ -1,4 +1,4 @@
-import type { MatingPiece } from '../chess/puzzles';
+import type { MatingPiece } from '../chess/types';
 import { EGGS } from '../game/eggDefs';
 import { Emitter } from '../game/events';
 import type { Lang } from '../i18n';

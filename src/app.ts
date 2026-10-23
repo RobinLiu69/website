@@ -1,14 +1,13 @@
 import * as THREE from 'three';
 import { Sfx } from './audio';
-import type { MatingPiece } from './chess/puzzles';
-import type { Evaluation } from './chess/rules';
-import { type Color, type Square, squareName } from './chess/types';
+import { type Color, MATING_PIECES, type MatingPiece, type Square, squareName } from './chess/types';
 import type { SectionContext } from './content/loaders';
 import { SECTIONS, type SectionId, sectionById, sectionForPiece } from './content/sections';
 import { EGGS, type EggId } from './game/eggDefs';
 import { EggEngine } from './game/eggEngine';
 import { Game } from './game/game';
 import { KONAMI, isTyping, watchKeys } from './game/keys';
+import { LOCKS, openedLocks } from './game/locks';
 import { createInterpreter } from './game/terminalCommands';
 import { type Lang, detectLang, getLang, setLang, t } from './i18n';
 import { Progress } from './state/progress';
@@ -23,6 +22,7 @@ import { Dust } from './three/sketch/dust';
 import { Guides } from './three/sketch/guides';
 import { Stage } from './three/stage';
 import { ease } from './three/tween';
+import { Whispers } from './three/whispers';
 import { h } from './ui/dom';
 import { Hud, type HudState } from './ui/hud';
 import { SidePanel, panelMetrics } from './ui/panel';
@@ -31,7 +31,7 @@ import { Banner, Toasts } from './ui/toast';
 
 const IDLE_MS = 45_000;
 
-/** Wires the 3D stage, the rules, the progress store and the HTML interface together. */
+/** Wires the 3D stage, the game, the progress store and the HTML interface together. */
 export class App {
   private readonly progress: Progress;
   private readonly stage: Stage;
@@ -39,6 +39,7 @@ export class App {
   private readonly board: BoardView;
   private readonly guides = new Guides();
   private readonly dust = new Dust();
+  private readonly whispers: Whispers;
   private readonly effects: Effects;
   private readonly game: Game;
   private readonly eggs: EggEngine;
@@ -51,20 +52,19 @@ export class App {
   private readonly terminal: TerminalView;
   private readonly announcer = h('div', { class: 'sr-only', attrs: { 'aria-live': 'polite', role: 'status' } });
 
-  /** The piece whose section is open in the panel, if any. */
+  /** The piece whose page is open in the panel, if any. */
   private reading: MatingPiece | null = null;
-  private puzzleSolved = false;
   private cinematic = false;
-  private signatureClicks = 0;
-  private signatureTimer = 0;
-  private riddlePokes = 0;
-  private pokeTimer = 0;
   private idleTimer = 0;
   private idleFired = false;
   private unlockFlow = 0;
+  private resetTimer = 0;
+  private starTimer = 0;
   private laidOut = { w: 0, h: 0 };
+  /** How much chalk the drawing shows: lowered while a page is read, and a little while the opponent thinks. */
   private exposure = 1;
-  private riddleUsed = false;
+  private dim = 1;
+  private readonly fades = { exposure: 0, dim: 0 };
 
   constructor(private readonly root: HTMLElement) {
     applyCssTheme();
@@ -79,12 +79,15 @@ export class App {
     this.stage = new Stage(stageHost);
     this.board = new BoardView(this.stage.tweens, this.factory);
     this.effects = new Effects(this.stage);
+    this.whispers = new Whispers(this.factory);
     this.stage.scene.add(this.board.root, this.dust.points);
-    this.stage.overlay.add(this.board.coordinates, this.guides.root);
+    this.stage.overlay.add(this.board.coordinates, this.guides.root, this.whispers.root);
     this.stage.sketch.setReveal(0);
 
     this.game = new Game(this.board, this.effects, this.stage);
     this.eggs = new EggEngine(this.progress, this.game);
+    this.whispers.onSeen = () => this.eggs.trigger('first-ghost');
+    this.whispers.setSolved(this.openPieces());
 
     this.toasts = new Toasts(root.appendChild(h('div', { class: 'toasts', attrs: { 'aria-live': 'polite' } })));
     this.banner = new Banner(root.appendChild(h('div', { class: 'banner', attrs: { 'aria-hidden': 'true' } })));
@@ -92,12 +95,8 @@ export class App {
 
     this.hud = new Hud(root, {
       reset: () => void this.resetBoard(),
-      riddle: () => void this.nextRiddle(),
       toggleLang: () => this.toggleLang(),
       toggleSound: () => this.toggleSound(),
-      puzzleRestart: () => void this.resetBoard(),
-      puzzleLeave: () => void this.leavePuzzle(),
-      signatureClick: () => this.signatureClick(),
       sigilClick: (piece) => this.onSigilClick(piece),
     });
 
@@ -114,7 +113,7 @@ export class App {
         isUnlocked: (id) => this.progress.isUnlocked(sectionById(id).piece),
         openSection: (id) => void this.openSection(id),
         sectionContext: () => this.sectionContext(),
-        move: async (from, to) => !this.cinematic && (await this.game.move(from, to)),
+        move: async (from, to) => !this.cinematic && (await this.game.play(from, to)),
         hasPiece: (square) => this.game.pieceAt(square) !== null,
         resetBoard: () => void this.resetBoard(),
         resetProgress: () => this.resetProgress(),
@@ -133,13 +132,16 @@ export class App {
     );
 
     const inputHost: InputHost = {
-      boardEnabled: () => this.reading === null && !this.game.busy && !this.cinematic,
+      boardEnabled: () => this.reading === null && this.game.playersTurn && !this.cinematic,
       orbitEnabled: () => this.reading === null && !this.stage.rig.isFlying,
-      move: (from, to) => void this.playMove(from, to),
+      canPick: (view) => view.color === this.game.player,
+      targets: (square) => this.game.targetsFrom(square),
+      move: (from, to) => this.playMove(from, to),
       backgroundClick: () => {
         if (this.reading) this.panel.close();
       },
       touched: () => this.onActivity(),
+      light: (point, brief) => this.whispers.setLight(point, brief),
       describeSquare: (square) => this.describeSquare(square),
       announce: (message) => this.announce(message),
     };
@@ -154,9 +156,11 @@ export class App {
     this.stage.onFrame((dt, time) => {
       this.guides.update(dt);
       this.dust.update(time);
+      this.whispers.update(dt, time);
     });
     this.progress.on('change', () => {
       this.hud.refresh(this.hudState());
+      this.whispers.setSolved(this.openPieces());
       if (this.panel.section === 'secret') void this.panel.refresh();
     });
   }
@@ -170,6 +174,7 @@ export class App {
       board: this.board,
       effects: this.effects,
       eggs: this.eggs,
+      whispers: this.whispers,
       openSection: (id: SectionId) => this.openSection(id),
     };
   }
@@ -200,11 +205,11 @@ export class App {
     void rig.flyTo(home, { duration: 2.6, limits: rig.overviewLimits() });
     this.root.classList.add('ready');
     if (this.progress.sound) this.sfx.ambience(true);
-    // A visitor who has not found the riddle button after a while gets a nudge toward it.
-    window.setTimeout(() => {
-      if (!this.riddleUsed && this.game.mode.kind === 'sandbox' && !this.reading) this.hud.nudgeRiddle();
-    }, 20_000);
     await this.game.begin(true);
+    // Something in the dark shows itself once, before anyone has gone looking.
+    this.whispers.arm(9);
+    // A visitor who already has four pages open finds the lines drawn for them.
+    window.setTimeout(() => this.maybeRevealStar(), 6000);
     this.armIdle();
   }
 
@@ -257,24 +262,37 @@ export class App {
     return rig.fitRegion(fitPoints(), region, rig.home.pitch, rig.home.target);
   }
 
-  /** Lets the drawing recede (or come back) while a page is being read. */
-  private async fadeDrawing(to: number): Promise<void> {
-    const from = this.exposure;
-    this.exposure = to;
-    await this.stage.tweens.run(0.7, (t01) => this.stage.sketch.setExposure(from + (to - from) * t01), { ease: ease.inOutCubic });
+  private applyExposure(): void {
+    this.stage.sketch.setExposure(this.exposure * this.dim);
+  }
+
+  /** Eases one of the two chalk levels (`exposure`: reading; `dim`: the opponent is thinking) to a new value. */
+  private async fade(which: 'exposure' | 'dim', to: number, seconds: number): Promise<void> {
+    const token = ++this.fades[which];
+    const from = this[which];
+    await this.stage.tweens.run(
+      seconds,
+      (t01) => {
+        if (token !== this.fades[which]) return;
+        this[which] = from + (to - from) * t01;
+        this.applyExposure();
+      },
+      { ease: ease.inOutCubic },
+    );
   }
 
   /* ------------------------------ state ------------------------------ */
 
+  private openPieces(): Set<MatingPiece> {
+    return new Set(MATING_PIECES.filter((piece) => this.progress.isUnlocked(piece)));
+  }
+
   private hudState(): HudState {
-    const mode = this.game.mode;
     return {
       lang: getLang(),
       sound: this.progress.sound,
       unlocked: SECTIONS.map((section) => section.piece).filter((piece) => this.progress.isUnlocked(piece)),
       open: this.reading,
-      puzzle: mode.kind === 'puzzle' ? { piece: mode.piece, solved: this.puzzleSolved } : null,
-      finished: this.progress.unlockedCount === SECTIONS.length,
       sectionTitle: (id) => this.sectionTitle(id),
     };
   }
@@ -292,7 +310,7 @@ export class App {
   }
 
   private sectionTitle(id: SectionId): string {
-    return id === 'secret' ? t('section.secretOpen') : t(`section.${id}`);
+    return t(`section.${id}`);
   }
 
   private refreshAll(): void {
@@ -344,7 +362,6 @@ export class App {
   private resetProgress(): void {
     this.progress.reset();
     if (this.panel.isOpen) this.panel.close();
-    this.puzzleSolved = false;
     this.refreshAll();
     this.toasts.show(t('toast.progressReset'));
   }
@@ -352,32 +369,31 @@ export class App {
   /* ----------------------------- the board ----------------------------- */
 
   private wireGame(): void {
-    this.game.on('moved', () => {
+    this.game.on('moved', ({ color }) => {
       this.sfx.move();
       this.input.clearSelection();
+      if (color === this.game.player) this.checkLocks();
     });
     this.game.on('captured', () => this.sfx.capture());
     this.game.on('check', () => {
       this.sfx.check();
-      this.toasts.show(t('status.check'), 'warn', 2200);
+      this.toasts.show(t('status.check'), 'warn', 1600);
     });
-    this.game.on('stalemate', () => this.toasts.show(t('status.stalemate'), 'info', 3200));
-    this.game.on('noKing', ({ color }) => this.toasts.show(t('status.noKing', { side: t(`side.${color}`) }), 'info', 3200));
-    this.game.on('checkmate', ({ pieces, mated, evaluation }) => void this.onCheckmate(pieces, mated, evaluation));
-    this.game.on('mode', () => {
-      this.puzzleSolved = false;
-      this.hud.refresh(this.hudState());
-    });
-    this.game.on('reset', () => {
-      this.puzzleSolved = false;
-      this.hud.refresh(this.hudState());
-    });
+    this.game.on('checkmate', ({ loser, pieces, kingSquare }) => void this.onCheckmate(loser, pieces, kingSquare));
+    this.game.on('stalemate', () => this.onDrawn(t('status.stalemate')));
+    this.game.on('draw', () => this.onDrawn(t('status.draw')));
+    this.game.on('thinking', (on) => void this.fade('dim', on ? 0.86 : 1, on ? 0.6 : 0.35));
+    this.game.on('reset', () => this.hud.refresh(this.hudState()));
   }
 
-  private async playMove(from: Square, to: Square): Promise<void> {
+  private async playMove(from: Square, to: Square): Promise<boolean> {
     const piece = this.game.pieceAt(from);
-    const moved = await this.game.move(from, to);
-    if (moved && piece) {
+    const moved = await this.game.play(from, to);
+    if (!moved) {
+      this.sfx.refuse();
+      return false;
+    }
+    if (piece) {
       this.announce(
         t('a11y.moved', {
           side: t(`side.${piece.color}`),
@@ -387,88 +403,84 @@ export class App {
         }),
       );
     }
+    return true;
   }
 
   private async resetBoard(): Promise<void> {
+    window.clearTimeout(this.resetTimer);
     if (this.reading) this.panel.close();
     this.input.clearSelection();
     await this.game.resetBoard();
-    this.toasts.show(t('toast.reset'), 'info', 1800);
   }
 
-  private async leavePuzzle(): Promise<void> {
-    this.input.clearSelection();
-    await this.game.leavePuzzle();
+  /** After a game has ended, the board wipes itself and starts again, unless a page is open over it. */
+  private scheduleReset(ms: number): void {
+    window.clearTimeout(this.resetTimer);
+    this.resetTimer = window.setTimeout(() => {
+      if (this.game.over && !this.reading) void this.resetBoard();
+    }, ms);
+  }
+
+  private onDrawn(text: string): void {
+    this.banner.show(text, undefined, 2600);
+    this.sfx.check();
+    this.scheduleReset(3800);
   }
 
   /* ------------------------ unlocking and panels ------------------------ */
 
-  private async onCheckmate(pieces: MatingPiece[], mated: Color[], evaluation: Evaluation): Promise<void> {
-    const first = pieces[0];
-    if (!first) return;
-    const mode = this.game.mode;
-    if (mode.kind === 'puzzle' && pieces.includes(mode.piece)) this.puzzleSolved = true;
+  /** The player stood a piece on a square that was waiting for it? */
+  private checkLocks(): void {
+    const opened = openedLocks(this.game.position, (piece) => this.progress.isUnlocked(piece));
+    const fresh = opened.filter((piece) => this.progress.unlock(piece));
+    for (const piece of fresh) {
+      const square = LOCKS[piece].square;
+      this.whispers.flare(piece);
+      this.effects.ripple(squareCenter(square, 0.02), PALETTE.accent, 4.6);
+      this.effects.confetti(squareCenter(square, 0.9), 26);
+    }
+    if (fresh.length > 0) void this.opened(fresh);
+  }
 
-    this.banner.show(t('status.checkmateBy'), undefined, 2300);
-    const fresh = pieces.filter((piece) => this.progress.unlock(piece));
-    this.hud.refresh(this.hudState());
-    this.celebrate(mated, evaluation, fresh.length > 0);
-
-    if (fresh.length === 0) {
+  /** Checkmate is a way in too: the pieces that gave it open their pages. */
+  private async onCheckmate(loser: Color, pieces: MatingPiece[], kingSquare: Square): Promise<void> {
+    this.banner.show(t('status.checkmate'), undefined, 2600);
+    const playerWon = loser !== this.game.player;
+    this.effects.ripple(squareCenter(kingSquare, 0.02), PALETTE.accent, playerWon ? 5.2 : 3.2);
+    this.scheduleReset(3800);
+    if (!playerWon) {
       this.sfx.check();
-      this.toasts.show(t('toast.known'), 'info');
       return;
     }
+    this.effects.confetti(squareCenter(kingSquare, 0.9), 32);
+    const fresh = pieces.filter((piece) => this.progress.unlock(piece));
+    if (fresh.length === 0) {
+      this.sfx.check();
+      return;
+    }
+    await this.opened(fresh);
+  }
 
+  /** Something has been opened: say so, and show the page once the board has had its moment. */
+  private async opened(fresh: MatingPiece[]): Promise<void> {
     this.sfx.unlock();
     this.toasts.show(t('toast.unlocked'), 'unlock', 4200);
     const names = fresh.map((piece) => this.sectionTitle(sectionForPiece(piece).id)).join(' · ');
     this.announce(t('a11y.unlocked', { section: names }));
     if (this.progress.unlockedCount === SECTIONS.length) this.eggs.trigger('all-unlocked');
 
-    // Let the king's last moment play out before the page opens over it.
+    // Let the last move play out before the page opens over it.
     const flow = ++this.unlockFlow;
     await this.stage.tweens.run(1.9, () => {});
     if (flow !== this.unlockFlow || this.reading) return;
     void this.openSection(sectionForPiece(fresh[0] as MatingPiece).id);
   }
 
-  /** Chalk dust and a ring on the floor where the king stood. */
-  private celebrate(mated: Color[], evaluation: Evaluation, fresh: boolean): void {
-    for (const color of mated) {
-      const square = evaluation[color].kingSquare;
-      this.effects.ripple(squareCenter(square, 0.02), PALETTE.accent, fresh ? 5.2 : 3.2);
-      this.effects.confetti(squareCenter(square, 0.9), fresh ? 44 : 14);
-    }
-  }
-
-  /** The riddle button: sets up the next position nobody has solved yet. The hidden page's riddle comes last. */
-  private async nextRiddle(): Promise<void> {
-    this.onActivity();
-    this.riddleUsed = true;
-    this.pokeRiddle();
-    const open = SECTIONS.map((section) => section.piece).filter((piece) => !this.progress.isUnlocked(piece));
-    const offered = open.filter((piece) => piece !== 'q' || open.length === 1);
-    if (offered.length === 0) return;
-    const mode = this.game.mode;
-    const current = mode.kind === 'puzzle' ? mode.piece : null;
-    const next = offered[(offered.indexOf(current as MatingPiece) + 1) % offered.length] as MatingPiece;
-    if (this.reading) this.panel.close();
-    this.input.clearSelection();
-    if (current !== next) await this.game.loadPuzzle(next);
-  }
-
-  private pokeRiddle(): void {
-    window.clearTimeout(this.pokeTimer);
-    this.riddlePokes += 1;
-    if (this.riddlePokes >= 8) {
-      this.riddlePokes = 0;
-      this.eggs.trigger('riddle-poke');
-      return;
-    }
-    this.pokeTimer = window.setTimeout(() => {
-      this.riddlePokes = 0;
-    }, 6000);
+  /** With the first four doors open, the lines to the fifth are drawn across the board. */
+  private maybeRevealStar(): void {
+    window.clearTimeout(this.starTimer);
+    if (this.reading || !this.whispers.starReady || this.whispers.starShown) return;
+    this.starTimer = window.setTimeout(() => this.whispers.revealStar(), 700);
   }
 
   private onSigilClick(piece: MatingPiece): void {
@@ -481,6 +493,7 @@ export class App {
     const piece = sectionById(id).piece;
     if (!this.progress.isUnlocked(piece)) return;
     this.unlockFlow++;
+    window.clearTimeout(this.resetTimer);
     this.input.cancelGesture();
     this.input.clearSelection();
 
@@ -495,7 +508,7 @@ export class App {
       shift: view.shift,
       limits: limitsAround(view.pose, 0.14, 0.08, 0.15),
     });
-    void this.fadeDrawing(0.55);
+    void this.fade('exposure', 0.55, 0.7);
     await this.panel.open(id);
     this.announce(t('a11y.panelOpen', { section: this.sectionTitle(id) }));
   }
@@ -506,7 +519,9 @@ export class App {
     this.hud.refresh(this.hudState());
     const rig = this.stage.rig;
     void rig.flyTo(rig.home, { duration: 1.0, shift: { x: 0, y: 0 }, limits: rig.overviewLimits() });
-    void this.fadeDrawing(1);
+    void this.fade('exposure', 1, 0.7);
+    if (this.game.over) this.scheduleReset(900);
+    this.maybeRevealStar();
   }
 
   /* ------------------------------- eggs ------------------------------- */
@@ -523,14 +538,9 @@ export class App {
 
   private playEggEffect(id: EggId): void {
     switch (id) {
-      case 'capture-black-king':
-      case 'capture-white-king':
-        this.effects.confetti(new THREE.Vector3(0, 1.2, 0), 70);
-        break;
       case 'konami':
         void this.dance(true);
         break;
-      case 'title-clicks':
       case 'idle':
         void this.dance(false);
         break;
@@ -538,6 +548,7 @@ export class App {
         this.effects.confetti(new THREE.Vector3(0, 2.5, 0), 90);
         break;
       case 'promotion':
+      case 'castle':
         this.effects.ripple(new THREE.Vector3(0, 0.05, 0), PALETTE.accentSoft, 6);
         break;
       default:
@@ -574,19 +585,6 @@ export class App {
     }
     this.board.root.rotation.y = 0;
     this.cinematic = false;
-  }
-
-  private signatureClick(): void {
-    window.clearTimeout(this.signatureTimer);
-    this.signatureClicks += 1;
-    if (this.signatureClicks >= 7) {
-      this.signatureClicks = 0;
-      this.eggs.trigger('title-clicks');
-      return;
-    }
-    this.signatureTimer = window.setTimeout(() => {
-      this.signatureClicks = 0;
-    }, 1600);
   }
 
   /** Any press or key: the idle clock starts over. */
