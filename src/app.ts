@@ -86,7 +86,10 @@ export class App {
 
     this.game = new Game(this.board, this.effects, this.stage);
     this.eggs = new EggEngine(this.progress, this.game);
-    this.whispers.onSeen = () => this.eggs.trigger('first-ghost');
+    this.whispers.onSeen = () => {
+      this.sfx.whisper();
+      this.eggs.trigger('first-ghost');
+    };
     this.whispers.setSolved(this.openPieces());
 
     this.toasts = new Toasts(root.appendChild(h('div', { class: 'toasts', attrs: { 'aria-live': 'polite' } })));

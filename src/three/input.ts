@@ -74,8 +74,9 @@ export class InputController {
     this.listen('pointermove', this.onMove);
     this.listen('pointerup', this.onUp);
     this.listen('pointercancel', this.onCancel);
-    this.listen('pointerleave', () => {
-      if (!this.gesture) this.leave();
+    this.listen('pointerleave', (e) => {
+      // A lifted finger leaves its light behind for a moment; only a mouse takes it away.
+      if (!this.gesture) this.leave(e.pointerType === 'mouse');
     });
     this.listen('contextmenu', (e) => e.preventDefault());
     this.listen('keydown', this.onKey);
@@ -322,10 +323,10 @@ export class InputController {
     }
   }
 
-  private leave(): void {
+  private leave(takeLight: boolean): void {
     this.canvas.style.cursor = '';
     this.stage.rig.parallaxTarget.set(0, 0);
-    this.host.light(null, false);
+    if (takeLight) this.host.light(null, false);
     if (!this.selected && this.cursor === null) this.board.hover(null);
   }
 

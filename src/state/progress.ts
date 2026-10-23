@@ -3,7 +3,9 @@ import { EGGS } from '../game/eggDefs';
 import { Emitter } from '../game/events';
 import type { Lang } from '../i18n';
 
-const STORAGE_KEY = 'rl-chess-portfolio:v1';
+const STORAGE_KEY = 'rl-chess-portfolio:v2';
+/** Pages used to be opened by other means (checkmate puzzles); those unlocks do not count, but the preferences do. */
+const LEGACY_KEY = 'rl-chess-portfolio:v1';
 
 interface Saved {
   unlocked?: MatingPiece[];
@@ -15,7 +17,13 @@ interface Saved {
 function read(): Saved {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Saved) : {};
+    if (raw) return JSON.parse(raw) as Saved;
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      const { lang, sound } = JSON.parse(legacy) as Saved;
+      return { lang, sound };
+    }
+    return {};
   } catch {
     return {};
   }

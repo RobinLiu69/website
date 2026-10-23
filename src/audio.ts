@@ -95,6 +95,12 @@ export class Sfx {
     }
   }
 
+  /** Something showed itself in the dark: a faint, falling note. */
+  whisper(): void {
+    this.tone(990, 0.7, 'sine', 0.035, 620);
+    this.tone(1480, 0.5, 'sine', 0.015, 930, 0.06);
+  }
+
   /** A piece that was put down where it may not go: a dull, short thud. */
   refuse(): void {
     this.tone(150, 0.14, 'sine', 0.07, 85);

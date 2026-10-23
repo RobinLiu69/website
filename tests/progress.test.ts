@@ -47,6 +47,19 @@ describe('Progress', () => {
     expect(second.sound).toBe(true);
   });
 
+  it('carries only the preferences over from the first version, whose unlocks were earned another way', () => {
+    const storage = globals.localStorage as MemoryStorage;
+    storage.setItem(
+      'rl-chess-portfolio:v1',
+      JSON.stringify({ unlocked: ['p', 'n'], eggs: ['gg'], lang: 'zh-TW', sound: true }),
+    );
+    const p = new Progress('en');
+    expect(p.unlockedCount).toBe(0);
+    expect(p.eggCount).toBe(0);
+    expect(p.lang).toBe('zh-TW');
+    expect(p.sound).toBe(true);
+  });
+
   it('keeps language and sound when progress is reset', () => {
     const p = new Progress('en');
     p.unlock('p');
